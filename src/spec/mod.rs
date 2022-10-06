@@ -41,13 +41,23 @@ pub enum ParsedInstruction {
     WideInstruction(WideInstruction),
 }
 
-#[derive(Debug)]
+/// Basic jump instruction classification
+pub enum JumpInstruction {
+    Unconditional(i16),
+    Conditional(i16),
+    Exit,
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub enum IllegalInstruction {
     IllegalOpCode,
     IllegalRegister,
     IllegalInstruction,
     LegacyInstruction,
     UnusedFieldNotZeroed,
+    UnsupportedAtomicWidth,
+    UnalignedJump,
+    OutOfBoundJump,
 }
 
 impl Instruction {
@@ -127,6 +137,23 @@ impl Instruction {
         self.regs & 0x0F
     }
 
+    pub fn jumps_to(self) -> Option<JumpInstruction> {
+        if InstructionClass::is_jump(self.opcode) {
+            let operation = self.opcode >> 4;
+            if operation == BPF_JA {
+                Some(JumpInstruction::Unconditional(self.off))
+            } else if operation == BPF_EXIT {
+                Some(JumpInstruction::Exit)
+            } else if operation == BPF_CALL {
+                None
+            } else {
+                Some(JumpInstruction::Conditional(self.off))
+            }
+        } else {
+            None
+        }
+    }
+
     /// `true` if this instruction is a wide instruction (i.e. taking 128 bits)
     ///
     /// Currently, there is only one wide instruction.
@@ -184,10 +211,14 @@ impl Instruction {
             0x0E => Some(IllegalInstruction::IllegalOpCode),
             0x0F => Some(IllegalInstruction::IllegalOpCode),
             BPF_JA => {
-                if self.regs == 0 && self.imm == 0 {
-                    None
+                if XLEN == 64 {
+                    Some(IllegalInstruction::IllegalInstruction)
                 } else {
-                    Some(IllegalInstruction::UnusedFieldNotZeroed)
+                    if self.regs == 0 && self.imm == 0 {
+                        None
+                    } else {
+                        Some(IllegalInstruction::UnusedFieldNotZeroed)
+                    }
                 }
             }
             BPF_CALL => {
@@ -198,10 +229,14 @@ impl Instruction {
                 }
             }
             BPF_EXIT => {
-                if self.regs == 0 && self.imm == 0 && self.off == 0 {
-                    None
+                if XLEN == 64 {
+                    Some(IllegalInstruction::IllegalInstruction)
                 } else {
-                    Some(IllegalInstruction::UnusedFieldNotZeroed)
+                    if self.regs == 0 && self.imm == 0 && self.off == 0 {
+                        None
+                    } else {
+                        Some(IllegalInstruction::UnusedFieldNotZeroed)
+                    }
                 }
             }
             _ => self.is_arithmetic_registers_valid::<false>(),
@@ -288,7 +323,7 @@ impl Instruction {
     fn is_atomic_store_valid(self) -> Option<IllegalInstruction> {
         let operant_size: u8 = (self.opcode >> 3) & 0b11;
         if operant_size != BPF_DW && operant_size != BPF_W {
-            return Some(IllegalInstruction::IllegalInstruction);
+            return Some(IllegalInstruction::UnsupportedAtomicWidth);
         }
 
         match self.imm {

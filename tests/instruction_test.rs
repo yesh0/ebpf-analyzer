@@ -1,6 +1,11 @@
-use ebpf_analyzer::spec::{Instruction, ParsedInstruction};
+use ebpf_analyzer::{
+    analyzer::{Analyzer, VerificationError},
+    blocks::CodeBlocks,
+    spec::{Instruction, ParsedInstruction},
+};
 
-const SIMPLE1: &str = include_str!("bpf-src/simple-1.txt");
+pub const SIMPLE1: &str = include_str!("bpf-src/simple-1.txt");
+pub const SIMPLE2: &str = include_str!("bpf-src/simple-2.txt");
 
 fn from_bytes(s: &Vec<&str>, i: usize) -> u64 {
     let mut result = 0;
@@ -54,5 +59,27 @@ fn validate_valid_code() {
                 pc += 2;
             }
         }
+    }
+}
+
+#[test]
+fn validate_valid_blocks() {
+    let code = parse_llvm_dump(SIMPLE1);
+    match CodeBlocks::new(&code) {
+        Ok(blocks) => assert!(blocks.block_count() == 10, "Block count does not match"),
+        Err(err) => panic!("Err: {:?}", err),
+    }
+    match Analyzer::analyze(&code) {
+        Ok(_) => {},
+        Err(err) => panic!("Err: {:?}", err),
+    }
+}
+
+#[test]
+fn validate_unreachable_blocks() {
+    let code = parse_llvm_dump(SIMPLE2);
+    match Analyzer::analyze(&code) {
+        Ok(_) => panic!("Should contains unreachable blocks"),
+        Err(err) => assert!(err == VerificationError::IllegalGraph),
     }
 }

@@ -38,7 +38,12 @@ pub enum InstructionClass {
 
 impl InstructionClass {
     pub fn is_store_or_load(opcode: u8) -> bool {
-        opcode <= InstructionClass::StoreFromRegister as u8
+        (opcode & 0b00000100) == 0
+    }
+
+    pub fn is_jump(opcode: u8) -> bool {
+        let class = opcode & 0b00000111;
+        class == BPF_JMP || class == BPF_JMP64
     }
 }
 
