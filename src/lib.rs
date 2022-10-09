@@ -3,8 +3,8 @@
 #![no_std]
 
 extern crate alloc;
-#[macro_use]
-extern crate num_derive;
+
+extern crate ebpf_consts;
 
 pub mod blocks;
 pub mod analyzer;
