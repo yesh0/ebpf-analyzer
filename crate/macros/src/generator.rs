@@ -14,7 +14,7 @@ pub fn generate(matches: &OpcodeMatches) -> TokenStream {
     let mut consts = TokenStream2::default();
     for arm in &matches.matches {
         if arm.combinations.is_empty() {
-            construct_code(&Vec::new(), &arm.code, &mut branches);
+            construct_code(&Vec::new(), &Vec::new(), &arm.code, &mut branches);
         } else {
             add_all_combinations(&arm.combinations, &arm.code, &mut branches, &mut consts);
         }
@@ -51,18 +51,22 @@ fn add_all_combinations(
 ) {
     let mut current: Vec<usize> = Vec::new();
     current.resize(combinations.len(), 0);
-    let mut enabled: Vec<Alias> = Vec::new();
+    let mut aliases: Vec<Alias> = Vec::new();
+    let mut enabled: Vec<String> = Vec::new();
     let mut components: Vec<Component> = Vec::new();
     loop {
+        aliases.clear();
         enabled.clear();
         components.clear();
         for (i, ele) in current.iter().enumerate() {
             let alias = &combinations[i].0[*ele];
-            enabled.push(alias.0.clone());
+            aliases.push(alias.0.clone());
             components.push(Component(alias.1));
+            enabled.push(alias.0.clone());
+            enabled.push(alias.1.to_string());
         }
         let mut match_code = TokenStream2::default();
-        construct_code(&enabled, code, &mut match_code);
+        construct_code(&aliases, &enabled, code, &mut match_code);
         let const_name = get_const_name(&components);
         consts.extend(quote! {
             const #const_name : u8 = #(#components)|*;
@@ -81,7 +85,12 @@ fn get_const_name(components: &Vec<Component>) -> ConstName {
     ConstName(v.join("_"))
 }
 
-fn construct_code(enabled: &[String], code: &CodeBlock, output: &mut TokenStream2) {
+fn construct_code(
+    aliases: &[String],
+    enabled: &[String],
+    code: &CodeBlock,
+    output: &mut TokenStream2,
+) {
     let mut stream = TokenStream2::new();
     for block in &code.0 {
         match block {
@@ -90,17 +99,17 @@ fn construct_code(enabled: &[String], code: &CodeBlock, output: &mut TokenStream
                 output.extend(stream.clone());
             }
             Replacing::WithString(i) => {
-                if enabled.len() <= *i {
+                if aliases.len() <= *i {
                     panic!("#{} out of range!", i);
                 }
-                let symbol = &enabled[*i];
+                let symbol = &aliases[*i];
                 output.extend(Literal::string(&symbol.as_str()).to_token_stream());
             }
             Replacing::WithRaw(i) => {
-                if enabled.len() <= *i {
+                if aliases.len() <= *i {
                     panic!("#{} out of range!", i);
                 }
-                let symbol = &enabled[*i];
+                let symbol = &aliases[*i];
                 if char::is_alphabetic(symbol.chars().nth(0).unwrap()) {
                     println!("Sym: {}", symbol.as_str());
                     stream
@@ -119,7 +128,7 @@ fn construct_code(enabled: &[String], code: &CodeBlock, output: &mut TokenStream
             }
             Replacing::Nested(conditions, code) => {
                 if conditions.matches(enabled) {
-                    construct_code(enabled, &code, output);
+                    construct_code(aliases, enabled, &code, output);
                 }
             }
         }

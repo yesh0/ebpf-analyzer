@@ -5,6 +5,8 @@ use ebpf_consts::*;
 pub fn match_test() {
     println!("{}", match_number(BPF_ALU | BPF_X | BPF_ADD));
     assert!(match_number(BPF_ALU | BPF_X | BPF_ADD) == 0xFFFFFFFF);
+    assert!(match_number(BPF_ALU | BPF_X | BPF_RSH) == 0);
+    assert!(match_number(BPF_ALU | BPF_X | BPF_LSH) == 0);
 }
 
 pub fn match_number(opcode: u8) -> u64 {
@@ -23,13 +25,13 @@ pub fn match_number(opcode: u8) -> u64 {
             BPF_RSH: ">>",
          ]] => {
             let dst = 0xFFF00FFF0000u64;
-            #?(X)   let src = 0x000FF000FFFFu64; ##
-            #?(K)   let src = 0u64;              ##
-            #?(ALU) let src = src as u32;        ##
-            #?(ALU)
+            #?((X))   let src = 0x000FF000FFFFu64; ##
+            #?((K))   let src = 0u64;              ##
+            #?((ALU)) let src = src as u32;        ##
+            #?((ALU))
                 let dst = dst as u32;
-                #?(X)
-                    println!("Nested");
+                #?(("<<")|(">>"))
+                    let src = src & 31;
                 ##
             ##
             let res = dst #=2 src;

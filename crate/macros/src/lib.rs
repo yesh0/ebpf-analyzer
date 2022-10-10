@@ -24,8 +24,8 @@ extern crate ebpf_consts;
 ///     opcode,
 ///     // Processed arms: begins with brackets
 ///     [[BPF_X: x, BPF_K: k], [BPF_ALU: "alu", BPF_ALU64: "alu64"]] => {
-///     #?(x) println!("In V1 branch");             ##
-///     #?(k)
+///     #?((x)) println!("In V1 branch");             ##
+///     #?((k))
 ///         // Nested macros is not supported.
 ///         // `println!("{}", #1);` will fail.
 ///         let branch = #1;
@@ -37,7 +37,7 @@ extern crate ebpf_consts;
 /// };
 /// ```
 /// 
-/// - Use `#?(required1, required2) CODE; ##` to insert conditional code snippets.
+/// - Use `#?((required1, required2)|(condition2)) CODE; ##` to insert conditional code snippets.
 /// - Use `#0`, `#1`, ... to refer to the alias as a raw code element.
 #[proc_macro]
 pub fn opcode_match(input: TokenStream) -> TokenStream {

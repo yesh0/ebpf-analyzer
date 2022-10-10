@@ -4,7 +4,7 @@ use syn::{
     parenthesized,
     parse::{Parse, ParseStream},
     punctuated::Punctuated,
-    LitInt, Token,
+    LitInt, LitStr, Token,
 };
 
 use crate::parser::Alias;
@@ -12,7 +12,7 @@ use crate::parser::Alias;
 /// Controls whether a code block is inserted
 #[derive(Debug)]
 pub struct Conditions {
-    pub when: Vec<Alias>,
+    pub when: Vec<Vec<Alias>>,
 }
 
 impl Conditions {
@@ -21,7 +21,25 @@ impl Conditions {
     }
 
     pub fn matches(&self, enabled: &[String]) -> bool {
-        self.is_empty() || self.when.iter().all(|required| enabled.contains(required))
+        self.is_empty()
+            || self
+                .when
+                .iter()
+                .any(|condition| condition.iter().all(|required| enabled.contains(required)))
+    }
+}
+
+struct IdentOrLitStr(String);
+
+impl Parse for IdentOrLitStr {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        Ok(if input.peek(syn::Ident) {
+            let ident: Ident = input.parse()?;
+            IdentOrLitStr(ident.to_string())
+        } else {
+            let str: LitStr = input.parse()?;
+            IdentOrLitStr(str.value())
+        })
     }
 }
 
@@ -29,9 +47,20 @@ impl Parse for Conditions {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let conditions;
         parenthesized!(conditions in input);
-        let aliases: Punctuated<Ident, Token!(,)> = conditions.parse_terminated(Ident::parse)?;
+        let conds: Punctuated<Punctuated<IdentOrLitStr, Token!(,)>, Token!(|)> = conditions
+            .parse_terminated(|input| {
+                let content;
+                parenthesized!(content in input);
+                let aliases: Punctuated<IdentOrLitStr, Token!(,)> =
+                    content.parse_terminated(IdentOrLitStr::parse)?;
+                Ok(aliases)
+            })?;
         Ok(Conditions {
-            when: Vec::from_iter(aliases.iter().map(|i| i.to_string())),
+            when: Vec::from_iter(
+                conds
+                    .iter()
+                    .map(|aliases| Vec::from_iter(aliases.iter().map(|i| i.0.clone()))),
+            ),
         })
     }
 }
