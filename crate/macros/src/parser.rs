@@ -1,0 +1,133 @@
+use syn::{
+    bracketed,
+    parse::{Parse, ParseStream},
+    punctuated::Punctuated,
+    token, Ident, LitStr, Token, braced,
+};
+
+use crate::{
+    block::{CodeBlock, Replacing},
+    opcode::OPCODES,
+};
+
+/// The root node
+#[derive(Debug)]
+pub struct OpcodeMatches {
+    /// Arms in the match statement
+    pub matches: Vec<MatchArm>,
+    /// The variable name to match against
+    pub value: Ident,
+}
+
+/// A match arm in the macro
+#[derive(Debug)]
+pub struct MatchArm {
+    /// The `[[A: a, B: b], [X: x, Y: y]]` part in the arm. Empty if unconditional.
+    pub combinations: Vec<Aliases>,
+    /// The code blocks following the combination part
+    pub code: CodeBlock,
+}
+
+pub type Alias = String;
+
+#[derive(Debug)]
+pub struct Aliases(pub Vec<(Alias, &'static str)>);
+
+/// Reads all code blocks until meeting a top-level bracket
+fn until_bracket(input: &ParseStream) -> syn::Result<Vec<Replacing>> {
+    let mut blocks: Vec<Replacing> = Vec::new();
+    while !input.is_empty() && !input.peek(token::Bracket) {
+        blocks.push(Replacing::None(input.parse()?));
+    }
+    Ok(blocks)
+}
+
+impl Parse for OpcodeMatches {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let value: Ident = input.parse()?;
+        let _: Token!(,) = input.parse()?;
+        let mut arms: Vec<MatchArm> = Vec::new();
+        while !input.is_empty() {
+            arms.push(if input.peek(token::Bracket) {
+                input.parse()?
+            } else {
+                MatchArm::as_is(CodeBlock(until_bracket(&input)?))
+            });
+        }
+        Ok(OpcodeMatches {
+            value,
+            matches: arms,
+        })
+    }
+}
+
+impl MatchArm {
+    pub fn as_is(code: CodeBlock) -> MatchArm {
+        MatchArm {
+            combinations: Vec::new(),
+            code,
+        }
+    }
+}
+
+impl Parse for MatchArm {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let header;
+        bracketed!(header in input);
+        let combinations: Punctuated<Aliases, Token!(,)> =
+            header.parse_terminated(Aliases::parse)?;
+        let _: Token!(=>) = input.parse()?;
+        let code;
+        braced!(code in input);
+        let code: CodeBlock = code.parse()?;
+        Ok(MatchArm {
+            combinations: Vec::from_iter(combinations),
+            code,
+        })
+    }
+}
+
+struct AliasPair(&'static str, Alias);
+
+impl Parse for AliasPair {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let component: Ident = input.parse()?;
+        let _: Token!(:) = input.parse()?;
+        let alias = if input.peek(Ident) {
+            let ident: Ident = input.parse()?;
+            ident.to_string()
+        } else {
+            let s: LitStr = input.parse()?;
+            s.value()
+        };
+        match AliasPair::find_opcode_component(&component) {
+            Some(name) => Ok(AliasPair(name, alias)),
+            None => Err(input.error("No such opcode component found")),
+        }
+    }
+}
+
+impl AliasPair {
+    fn find_opcode_component(component: &Ident) -> Option<&'static str> {
+        for ele in OPCODES {
+            if ele.0 == component.to_string() {
+                return Some(ele.0);
+            }
+        }
+        None
+    }
+}
+
+impl Parse for Aliases {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let content;
+        bracketed!(content in input);
+        let aliases: Punctuated<AliasPair, Token!(,)> =
+            content.parse_terminated(AliasPair::parse)?;
+        let mut result = Aliases(Vec::new());
+        for ele in aliases {
+            result.0.push((ele.1, ele.0));
+        }
+        Ok(result)
+    }
+}

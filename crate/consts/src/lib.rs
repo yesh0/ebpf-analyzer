@@ -201,11 +201,13 @@ pub mod mask {
     use crate::*;
 
     /// Opcode mask
+    pub const BPF_OPCODE_MASK           : u64 = 0xFF;
+    /// Opcode mask
     pub const BPF_OPCODE_CLASS_MASK     : u8 = 0b00000111;
     /// Store / load modifiers
     pub const BPF_OPCODE_MODIFIER_MASK  : u8 = 0b11100000;
     /// Store / load operant size
-    pub const BPF_OPCODE_SIZE_MASK       : u8 = 0b00011000;
+    pub const BPF_OPCODE_SIZE_MASK      : u8 = 0b00011000;
     /// JMP / JMP32 type mask
     pub const BPF_OPCODE_JMP_MASK       : u8 = 0b11110000;
     /// ALU / ALU64 type mask
