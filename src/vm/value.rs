@@ -2,7 +2,7 @@
 //!
 //! These traits
 
-use core::{ops::*, num::Wrapping};
+use core::{ops::*, num::Wrapping, cmp::Ordering};
 
 /// Representing casting between integer types
 ///
@@ -192,6 +192,22 @@ impl ByteSwap for Wrapping<u64> {
     }
 }
 
+pub trait SignedPartialOrd {
+    fn signed_partial_cmp(&self, other: &Self) -> Option<Ordering>;
+}
+
+impl SignedPartialOrd for u64 {
+    fn signed_partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        (*self as i64).partial_cmp(&(*other as i64))
+    }
+}
+
+impl SignedPartialOrd for Wrapping<u64> {
+    fn signed_partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.0.partial_cmp(&other.0)
+    }
+}
+
 /// A value in the VM, compatible with `u64` but allowing injecting custom types
 pub trait VmValue:
     // Type conversion
@@ -214,6 +230,7 @@ pub trait VmValue:
     // Ordering: Using PartialOrd instead of Ord, since one cannot compare pointers with integers
     + PartialOrd<Self>
     + PartialEq<Self>
+    + SignedPartialOrd
     // Value state tracking
     + Verifiable
     // Primitive-like

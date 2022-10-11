@@ -1,6 +1,8 @@
 pub mod value;
 pub mod vm;
 
+use core::cmp::Ordering::*;
+
 use ebpf_consts::*;
 use ebpf_macros::opcode_match;
 
@@ -98,6 +100,62 @@ pub fn run<Value: VmValue, M: Vm<Value>>(code: &[u64], vm: &mut M) {
                 let dst = *vm.get_reg(dst_r);
                 let result = dst.#=2(insn.imm);
                 vm.set_reg(dst_r, result);
+            }
+            // JMP32 / JMP: Conditional
+            [[BPF_JMP32: JMP32, BPF_JMP: JMP64], [BPF_X: X, BPF_K: K],
+             [
+                // Unsigned
+                BPF_JEQ: "[Equal]",
+                BPF_JNE: "[Greater, Less]",
+                BPF_JGT: "[Greater]",
+                BPF_JGE: "[Greater, Equal]",
+                BPF_JLT: "[Less]",
+                BPF_JLE: "[Less, Equal]",
+                // Signed
+                BPF_JSGT: "[Greater]",
+                BPF_JSGE: "[Greater, Equal]",
+                BPF_JSLT: "[Less]",
+                BPF_JSLE: "[Less, Equal]",
+                // Misc
+                BPF_JSET: "[Less, Greater]",
+             ]
+            ] => {
+                let dst = *vm.get_reg(insn.dst_reg());
+                #?((K)) let src = Value::constant32(insn.imm);  ##
+                #?((X)) let src = *vm.get_reg(insn.src_reg());  ##
+                #?((JMP32))
+                    #?((BPF_JSGT)|(BPF_JSGE)|(BPF_JSLT)|(BPF_JSLE))
+                        let dst = dst.cast_i32();
+                        let src = src.cast_i32();
+                    ##
+                    #?((__BPF_JSGT__,__BPF_JSGE__,__BPF_JSLT__,__BPF_JSLE__))
+                        let dst = dst.cast_u32();
+                        let src = src.cast_u32();
+                    ##
+                ##
+
+                #?((__BPF_JSGT__,__BPF_JSGE__,__BPF_JSLT__,__BPF_JSLE__,__BPF_JSET__))
+                    let result = dst.partial_cmp(&src);
+                ##
+                #?((BPF_JSGT)|(BPF_JSGE)|(BPF_JSLT)|(BPF_JSLE))
+                    let result = dst.signed_partial_cmp(&src);
+                ##
+                #?((BPF_JSET))
+                    let result = dst.bitand(src).partial_cmp(&Value::constant32(0));
+                ##
+
+                let allowed = #=2;
+                if let Some(cmp) = result {
+                    if allowed.contains(&cmp) {
+                        if insn.off >= 0 {
+                            pc += insn.off as usize;
+                        } else {
+                            pc -= (-insn.off) as usize;
+                        }
+                    }
+                } else {
+                    vm.invalidate();
+                }
             }
             _ => {
                 vm.invalidate();

@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use proc_macro::TokenStream;
 use proc_macro2::{Ident, Literal, Punct, Spacing, Span, TokenStream as TokenStream2};
 use quote::{quote, ToTokens, TokenStreamExt};
@@ -109,7 +111,9 @@ fn construct_code(
                     panic!("#{} out of range!", i);
                 }
                 let symbol = &aliases[*i];
-                if char::is_alphabetic(symbol.chars().nth(0).unwrap()) {
+                if let Ok(tokens) = TokenStream2::from_str(&symbol) {
+                    output.extend(tokens);
+                } else if char::is_alphabetic(symbol.chars().nth(0).unwrap()) {
                     output
                         .extend(Ident::new(&symbol.as_str(), Span::call_site()).to_token_stream());
                 } else {
