@@ -131,6 +131,67 @@ impl SignedNeg for Wrapping<u64> {
     }
 }
 
+pub trait ByteSwap {
+    fn host_to_le(self, width: i32) -> Self;
+    fn host_to_be(self, width: i32) -> Self;
+}
+
+impl ByteSwap for u64 {
+    fn host_to_le(self, width: i32) -> Self {
+        match width {
+            64 => {
+                self.to_le()
+            }
+            32 => {
+                let lower = (self as u32).to_le();
+                let upper = ((self >> 32) as u32).to_le();
+                ((upper as u64) << 32) | lower as u64
+            }
+            16 => {
+                let mut output = 0u64;
+                for i in 0..4 {
+                    let n = (((self >> (i * 16)) & 0xFFFF) as u16).to_le();
+                    output |= (n as u64) << (i * 8);
+                }
+                output
+            }
+            _ => 0,
+        }
+    }
+
+    fn host_to_be(self, width: i32) -> Self {
+        match width {
+            64 => {
+                self.to_be()
+            }
+            32 => {
+                let lower = (self as u32).to_be();
+                let upper = ((self >> 32) as u32).to_be();
+                ((upper as u64) << 32) | lower as u64
+            }
+            16 => {
+                let mut output = 0u64;
+                for i in 0..4 {
+                    let n = (((self >> (i * 16)) & 0xFFFF) as u16).to_be();
+                    output |= (n as u64) << (i * 8);
+                }
+                output
+            }
+            _ => 0,
+        }
+    }
+}
+
+impl ByteSwap for Wrapping<u64> {
+    fn host_to_le(self, width: i32) -> Self {
+        Wrapping(self.0.host_to_le(width))
+    }
+
+    fn host_to_be(self, width: i32) -> Self {
+        Wrapping(self.0.host_to_be(width))
+    }
+}
+
 /// A value in the VM, compatible with `u64` but allowing injecting custom types
 pub trait VmValue:
     // Type conversion
@@ -149,6 +210,7 @@ pub trait VmValue:
     // Unary ALU operators
     + Not<Output = Self>
     + SignedNeg<Output = Self>
+    + ByteSwap
     // Ordering: Using PartialOrd instead of Ord, since one cannot compare pointers with integers
     + PartialOrd<Self>
     + PartialEq<Self>

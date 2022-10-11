@@ -248,8 +248,9 @@ impl Instruction {
     ///
     /// 1. None of them uses the offset;
     /// 2. All of them writes to the dst_reg;
-    /// 3. BPF_ALU_END operates on dst_reg according to the immediate number;
-    /// 4. Others read from either src_reg or the immediate number.
+    /// 3. BPF_ALU_END operates on dst_reg according to the immediate number, requiring BPF_ALU;
+    /// 4. BPF_NEG reads and writes to from dst_reg, requiring BPF_K;
+    /// 5. Others read from either src_reg or the immediate number.
     ///
     /// FIXME: Descriptions from https://docs.kernel.org/bpf/instruction-set.html
     /// conflicts with https://github.com/iovisor/bpf-docs/blob/master/eBPF.md about BPF_NEG.
@@ -274,7 +275,9 @@ impl Instruction {
                 }
             }
             BPF_END => {
-                if self.src_reg() != 0 {
+                if (self.opcode & BPF_OPCODE_CLASS_MASK) == BPF_ALU64 {
+                    Some(IllegalInstruction::IllegalOpCode)
+                } else if self.src_reg() != 0 {
                     Some(IllegalInstruction::UnusedFieldNotZeroed)
                 } else if self.dst_reg() < WRITABLE_REGISTER_COUNT {
                     if [16, 32, 64].contains(&self.imm) {

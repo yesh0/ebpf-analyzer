@@ -112,6 +112,14 @@ pub const BPF_ATOMIC  : u8 = 0xc0;
 pub const BPF_K     : u8 = 0x00;
 /// BPF source operand modifier: `src` register.
 pub const BPF_X     : u8 = 0x08;
+/// BPF byte swap modifier: from host byte order to LE
+pub const BPF_TO_LE : u8 = 0x00;
+/// BPF byte swap modifier: from host byte order to BE
+pub const BPF_TO_BE : u8 = 0x08;
+/// BPF byte swap modifier: from host byte order to LE
+pub const BPF_FROM_LE : u8 = BPF_TO_LE;
+/// BPF byte swap modifier: from host byte order to BE
+pub const BPF_FROM_BE : u8 = BPF_TO_BE;
 
 // Operation codes -- BPF_ALU or BPF_ALU64 classes:
 /// BPF ALU/ALU64 operation code: addition.

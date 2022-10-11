@@ -9,3 +9,4 @@ extern crate ebpf_consts;
 pub mod blocks;
 pub mod analyzer;
 pub mod spec;
+pub mod vm;

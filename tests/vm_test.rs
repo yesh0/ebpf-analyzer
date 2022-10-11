@@ -6,7 +6,7 @@ use ebpf_analyzer::vm::{
 };
 use ebpf_consts::{
     BPF_ADD, BPF_ALU, BPF_ALU64, BPF_DIV, BPF_K, BPF_MOD, BPF_MUL, BPF_SUB, BPF_X,
-    WRITABLE_REGISTER_COUNT, BPF_NEG, BPF_MOV, BPF_AND, BPF_OR, BPF_XOR, BPF_LSH, BPF_RSH, BPF_ARSH,
+    WRITABLE_REGISTER_COUNT, BPF_NEG, BPF_MOV, BPF_AND, BPF_OR, BPF_XOR, BPF_LSH, BPF_RSH, BPF_ARSH, BPF_END, BPF_TO_LE, BPF_TO_BE,
 };
 
 #[test]
@@ -75,8 +75,6 @@ pub fn test_algebra() {
     assert_biop(BPF_ALU | BPF_MOD | BPF_X, 0x1010, 0x1000, 0x10);
     assert_biop(BPF_ALU | BPF_MOD | BPF_K, 0x1010, 0x1000, 0x10);
 
-    assert_biop(BPF_ALU64 | BPF_NEG | BPF_X, 0x1, 0, 0xFFFFFFFFFFFFFFFF);
-    assert_biop(BPF_ALU | BPF_NEG | BPF_X, 0x1, 0, 0xFFFFFFFFFFFFFFFF);
     assert_biop(BPF_ALU64 | BPF_NEG | BPF_K, 0x1, 0, 0xFFFFFFFFFFFFFFFF);
     assert_biop(BPF_ALU | BPF_NEG | BPF_K, 0x1, 0, 0xFFFFFFFFFFFFFFFF);
 
@@ -105,8 +103,16 @@ pub fn test_bitwise() {
 
     assert_biop(BPF_ALU64 | BPF_RSH | BPF_K, 0x100000000, 32, 1);
     assert_biop(BPF_ALU64 | BPF_LSH | BPF_K, 1, 32, 0x100000000);
-    assert_biop(BPF_ALU | BPF_ARSH | BPF_K, 0xF0000000, 28, 0xFFFFFFFF);
+    assert_biop(BPF_ALU | BPF_ARSH | BPF_K, 0xF0000000, 28, 0xFFFFFFFFFFFFFFFF);
     assert_biop(BPF_ALU64 | BPF_ARSH | BPF_K, 0xF000000000000000, 28, 0xFFFFFFFF00000000);
+
+    let number = 0xCAFEBABEDEADBEEFu64;
+    assert_biop(BPF_ALU | BPF_END | BPF_TO_LE, number, 64, number.to_le());
+    assert_biop(BPF_ALU | BPF_END | BPF_TO_BE, number, 64, number.to_be());
+    assert_biop(BPF_ALU | BPF_END | BPF_TO_LE, number & 0xFFFFFFFF, 32, (number as u32).to_le() as u64);
+    assert_biop(BPF_ALU | BPF_END | BPF_TO_BE, number & 0xFFFFFFFF, 32, (number as u32).to_be() as u64);
+    assert_biop(BPF_ALU | BPF_END | BPF_TO_LE, number & 0xFFFF, 16, (number as u16).to_le() as u64);
+    assert_biop(BPF_ALU | BPF_END | BPF_TO_BE, number & 0xFFFF, 16, (number as u16).to_be() as u64);
 }
 
 pub fn assert_biop(op: u8, dst_v: u64, src_v: u64, result: u64) {
@@ -114,7 +120,7 @@ pub fn assert_biop(op: u8, dst_v: u64, src_v: u64, result: u64) {
     assert!(vm.is_valid());
     let dst = (WRITABLE_REGISTER_COUNT - 2) as u64;
     vm.set_reg(dst as u8, Wrapping(dst_v));
-    let c = if (BPF_X & op) == 0 {
+    let c = if (BPF_X & op) == 0 || op == (BPF_ALU | BPF_END | BPF_TO_BE) {
         op as u64 | (dst << 8) | (src_v << 32)
     } else {
         let src = (WRITABLE_REGISTER_COUNT - 1) as u64;
@@ -124,4 +130,6 @@ pub fn assert_biop(op: u8, dst_v: u64, src_v: u64, result: u64) {
     let code = vec![c, 0];
     run(&code, &mut vm);
     assert_eq!(vm.get_reg(dst as u8).0, result);
+    assert!(!vm.is_valid());
+    assert_eq!(*vm.pc(), 1);
 }

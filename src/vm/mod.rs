@@ -46,7 +46,12 @@ pub fn run<Value: VmValue, M: Vm<Value>>(code: &[u64], vm: &mut M) {
                 #?((__mov__))
                     let dst = *vm.get_reg(dst_r);
                     #?((ALU32))
-                        let dst = dst.cast_u32();
+                        #?((signed_shr))
+                            let dst = dst.cast_i32();
+                        ##
+                        #?((__signed_shr__))
+                            let dst = dst.cast_u32();
+                        ##
                     ##
                 ##
 
@@ -69,7 +74,7 @@ pub fn run<Value: VmValue, M: Vm<Value>>(code: &[u64], vm: &mut M) {
                 vm.set_reg(dst_r, result);
             }
             // ALU / ALU64: Unary operators
-            [[BPF_ALU: ALU32, BPF_ALU64: ALU64], [BPF_X: X, BPF_K: K],
+            [[BPF_ALU: ALU32, BPF_ALU64: ALU64], [BPF_K: K],
              [
                 BPF_NEG: signed_neg,
              ]
@@ -80,6 +85,18 @@ pub fn run<Value: VmValue, M: Vm<Value>>(code: &[u64], vm: &mut M) {
                     let dst = dst.cast_i32();
                 ##
                 let result = dst.#=2();
+                vm.set_reg(dst_r, result);
+            }
+            // ALU / ALU64: Byte swap
+            [[BPF_ALU: ALU32], [BPF_END: END],
+             [
+                BPF_TO_LE: host_to_le,
+                BPF_TO_BE: host_to_be,
+             ]
+            ] => {
+                let dst_r = insn.dst_reg();
+                let dst = *vm.get_reg(dst_r);
+                let result = dst.#=2(insn.imm);
                 vm.set_reg(dst_r, result);
             }
             _ => {
