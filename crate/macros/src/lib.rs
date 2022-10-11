@@ -38,6 +38,7 @@ extern crate ebpf_consts;
 /// ```
 /// 
 /// - Use `#?((required1, required2)|(condition2)) CODE; ##` to insert conditional code snippets.
+/// - Use `#?((__exclusive1__,required2)) CODE; ##` to require `!exclusive1 && required2`.
 /// - Use `#0`, `#1`, ... to refer to the alias as a raw code element.
 #[proc_macro]
 pub fn opcode_match(input: TokenStream) -> TokenStream {

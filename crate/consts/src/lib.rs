@@ -40,7 +40,7 @@
 
 pub type CodeUnit = u64;
 
-/// Stack for the eBPF stack, in bytes.
+/// Stack for the eBPF stack, in slots.
 pub const STACK_SIZE: usize = 512;
 
 /// Writable register count, that is, R0, ..., R9

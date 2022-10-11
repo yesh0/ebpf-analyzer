@@ -25,8 +25,18 @@ impl Conditions {
             || self
                 .when
                 .iter()
-                .any(|condition| condition.iter().all(|required| enabled.contains(required)))
+                .any(|condition| condition_matches(condition, enabled))
     }
+}
+
+fn condition_matches(condition: &[String], enabled: &[String]) -> bool {
+    condition.iter().all(|cond| {
+        if cond.starts_with("__") && cond.ends_with("__") {
+            !enabled.contains(&cond[2..cond.len() - 2].to_string())
+        } else {
+            enabled.contains(cond)
+        }
+    })
 }
 
 struct IdentOrLitStr(String);

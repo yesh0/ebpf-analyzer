@@ -91,7 +91,6 @@ fn construct_code(
     code: &CodeBlock,
     output: &mut TokenStream2,
 ) {
-    let mut stream = TokenStream2::new();
     for block in &code.0 {
         match block {
             Replacing::End => panic!("Unexpected token"),
@@ -111,10 +110,8 @@ fn construct_code(
                 }
                 let symbol = &aliases[*i];
                 if char::is_alphabetic(symbol.chars().nth(0).unwrap()) {
-                    println!("Sym: {}", symbol.as_str());
-                    stream
+                    output
                         .extend(Ident::new(&symbol.as_str(), Span::call_site()).to_token_stream());
-                    println!("End: {}", symbol.as_str());
                 } else {
                     let joining = &symbol[0..symbol.len() - 1];
                     for c in joining.chars() {
