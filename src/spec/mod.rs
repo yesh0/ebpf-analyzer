@@ -1,18 +1,10 @@
 use core::fmt::Debug;
 
-use num_traits::FromPrimitive;
+use ebpf_consts::*;
+use ebpf_consts::mask::*;
 
-use self::{
-    consts::{
-        InstructionClass, BPF_ALU_END, BPF_ATOMIC_CMPXCHG, BPF_ATOMIC_FETCH, BPF_ATOMIC_XCHG,
-        BPF_CALL, BPF_DW, BPF_EXIT, BPF_JA, BPF_LD, BPF_MODE_ATOMIC, BPF_MODE_IMM, BPF_MODE_MEM,
-        BPF_W,
-    },
-    state::{READABLE_REGISTER_COUNT, WRITABLE_REGISTER_COUNT},
-};
-
-pub mod consts;
 pub mod state;
+pub mod value;
 
 pub type CodeOffset = usize;
 
@@ -61,17 +53,15 @@ pub enum IllegalInstruction {
 }
 
 impl Instruction {
+    pub fn opcode(code: u64) -> u8 {
+        (code & BPF_OPCODE_MASK) as u8
+    }
+
     /// Constructs an instruction from code at `pc`
     ///
     /// It does not check for instruction validity
     pub fn from(code: &[u64], pc: usize) -> ParsedInstruction {
-        let encoded = code[pc];
-        let insn = Instruction {
-            opcode: (encoded & 0xFF) as u8,
-            regs: ((encoded >> 8) & 0xFF) as u8,
-            off: ((encoded >> 16) & 0xFFFF) as i16,
-            imm: (encoded >> 32) as i32,
-        };
+        let insn = Instruction::from_raw(code[pc]);
         if insn.is_wide() {
             if pc + 1 >= code.len() {
                 ParsedInstruction::None
@@ -86,17 +76,30 @@ impl Instruction {
         }
     }
 
+    /// Constructs an instruction from a encoded code
+    pub fn from_raw(encoded: u64) -> Instruction {
+        Instruction {
+            opcode: (encoded & 0xFF) as u8,
+            regs: ((encoded >> 8) & 0xFF) as u8,
+            off: ((encoded >> 16) & 0xFFFF) as i16,
+            imm: (encoded >> 32) as i32,
+        }
+    }
+
     /// Checks whether an instruction is a valid one
     ///
     /// The following checks are performed:
     /// 1. Legacy instructions (BPF Packet access instructions) are disallowed;
     /// 2. Unused fields must be zeroed;
     /// 3. R10 is read-only while the other ten are writable;
+    /// 
+    /// Note that for wide instructions, ideally, the next instruction
+    /// will have its low 32 bits zeroed. But we are not checking that here.
     pub fn validate(self) -> Option<IllegalInstruction> {
-        match self.code_type() {
-            InstructionClass::LoadMisc => {
-                if self.opcode == (BPF_LD | (BPF_DW << 3) | (BPF_MODE_IMM << 5)) {
-                    if self.off == 0 && self.src_reg() == 0 && self.imm == 0 {
+        match self.opcode & BPF_OPCODE_CLASS_MASK {
+            BPF_LD => {
+                if self.is_wide() {
+                    if self.off == 0 && self.src_reg() == 0 {
                         if self.dst_reg() < WRITABLE_REGISTER_COUNT {
                             None
                         } else {
@@ -109,24 +112,21 @@ impl Instruction {
                     Some(IllegalInstruction::LegacyInstruction)
                 }
             }
-            InstructionClass::LoadIntoRegister => self.is_store_load_valid::<true, false>(),
-            InstructionClass::StoreFromImmediate => self.is_store_load_valid::<false, true>(),
-            InstructionClass::StoreFromRegister => {
-                if (self.opcode >> 5) == BPF_MODE_ATOMIC {
+            BPF_LDX => self.is_store_load_valid::<true, false>(),
+            BPF_ST => self.is_store_load_valid::<false, true>(),
+            BPF_STX => {
+                if (self.opcode >> 5) == BPF_ATOMIC {
                     self.is_atomic_store_valid()
                 } else {
                     self.is_store_load_valid::<false, false>()
                 }
             }
-            InstructionClass::Arithmetric32 => self.is_arithmetic_valid(),
-            InstructionClass::Jump32 => self.is_jump_valid::<32>(),
-            InstructionClass::Jump64 => self.is_jump_valid::<64>(),
-            InstructionClass::Arithmetric64 => self.is_arithmetic_valid(),
+            BPF_ALU => self.is_arithmetic_valid(),
+            BPF_JMP => self.is_jump_valid::<64>(),
+            BPF_JMP32 => self.is_jump_valid::<32>(),
+            BPF_ALU64 => self.is_arithmetic_valid(),
+            _ => unreachable!()
         }
-    }
-
-    pub fn code_type(self) -> InstructionClass {
-        FromPrimitive::from_u8(self.opcode & 0b00000111).unwrap()
     }
 
     pub fn src_reg(self) -> u8 {
@@ -138,8 +138,8 @@ impl Instruction {
     }
 
     pub fn jumps_to(self) -> Option<JumpInstruction> {
-        if InstructionClass::is_jump(self.opcode) {
-            let operation = self.opcode >> 4;
+        if is_jump(self.opcode) {
+            let operation = self.opcode & BPF_OPCODE_JMP_MASK;
             if operation == BPF_JA {
                 Some(JumpInstruction::Unconditional(self.off))
             } else if operation == BPF_EXIT {
@@ -158,7 +158,7 @@ impl Instruction {
     ///
     /// Currently, there is only one wide instruction.
     pub fn is_wide(self) -> bool {
-        self.opcode == (BPF_LD | (BPF_DW << 3) | (BPF_MODE_IMM << 5))
+        self.opcode == (BPF_LD | BPF_DW | BPF_IMM)
     }
 
     /// Checks a store / load instruction
@@ -168,7 +168,7 @@ impl Instruction {
     ///   - BPF_STX: Requires readable dst_reg, readable src_reg and off;
     ///   - BPF_ST : Requires readable dst_reg, imm and off.
     fn is_store_load_valid<const LOAD: bool, const IMM: bool>(self) -> Option<IllegalInstruction> {
-        if (self.opcode >> 5) != BPF_MODE_MEM {
+        if (self.opcode & BPF_OPCODE_MODIFIER_MASK) != BPF_MEM {
             return Some(IllegalInstruction::IllegalOpCode);
         }
 
@@ -207,11 +207,11 @@ impl Instruction {
     ///    a) compares dst_reg against the immediate number;
     ///    b) or compares dst_reg against the src_reg.
     fn is_jump_valid<const XLEN: u8>(self) -> Option<IllegalInstruction> {
-        match self.opcode >> 4 {
-            0x0E => Some(IllegalInstruction::IllegalOpCode),
-            0x0F => Some(IllegalInstruction::IllegalOpCode),
+        match self.opcode & BPF_OPCODE_JMP_MASK {
+            0xE0 => Some(IllegalInstruction::IllegalOpCode),
+            0xF0 => Some(IllegalInstruction::IllegalOpCode),
             BPF_JA => {
-                if XLEN == 64 {
+                if XLEN == 32 {
                     Some(IllegalInstruction::IllegalInstruction)
                 } else {
                     if self.regs == 0 && self.imm == 0 {
@@ -222,6 +222,7 @@ impl Instruction {
                 }
             }
             BPF_CALL => {
+                // TODO: support pseudo tail call
                 if self.regs == 0 && self.off == 0 {
                     None
                 } else {
@@ -229,7 +230,7 @@ impl Instruction {
                 }
             }
             BPF_EXIT => {
-                if XLEN == 64 {
+                if XLEN == 32 {
                     Some(IllegalInstruction::IllegalInstruction)
                 } else {
                     if self.regs == 0 && self.imm == 0 && self.off == 0 {
@@ -258,14 +259,24 @@ impl Instruction {
             return Some(IllegalInstruction::UnusedFieldNotZeroed);
         }
 
-        match self.opcode >> 4 {
-            0x0E => Some(IllegalInstruction::IllegalOpCode),
-            0x0F => Some(IllegalInstruction::IllegalOpCode),
-            BPF_ALU_END => {
+        match self.opcode & BPF_OPCODE_ALU_MASK {
+            0xE0 => Some(IllegalInstruction::IllegalOpCode),
+            0xF0 => Some(IllegalInstruction::IllegalOpCode),
+            BPF_NEG => {
                 if self.src_reg() != 0 {
-                    return Some(IllegalInstruction::UnusedFieldNotZeroed);
+                    Some(IllegalInstruction::UnusedFieldNotZeroed)
+                } else if self.dst_reg() >= WRITABLE_REGISTER_COUNT {
+                    Some(IllegalInstruction::IllegalRegister)
+                } else if (self.opcode & BPF_X) != 0 {
+                    Some(IllegalInstruction::IllegalOpCode)
+                } else {
+                    None
                 }
-                if self.dst_reg() < WRITABLE_REGISTER_COUNT {
+            }
+            BPF_END => {
+                if self.src_reg() != 0 {
+                    Some(IllegalInstruction::UnusedFieldNotZeroed)
+                } else if self.dst_reg() < WRITABLE_REGISTER_COUNT {
                     if [16, 32, 64].contains(&self.imm) {
                         None
                     } else {
@@ -280,7 +291,7 @@ impl Instruction {
     }
 
     pub fn is_arithmetic_source_immediate(self) -> bool {
-        (self.opcode & 0b00001000) == 0
+        (self.opcode & BPF_OPCODE_SRC_MASK) == 0
     }
 
     fn is_arithmetic_registers_valid<const WRITES_TO_DST: bool>(
@@ -321,7 +332,7 @@ impl Instruction {
     /// 2. BPF_CMPXCHG: The value is stored into R0, src_reg not modified.
     /// 3. Other instructions store into src_reg if the BPF_FETCH flag is set.
     fn is_atomic_store_valid(self) -> Option<IllegalInstruction> {
-        let operant_size: u8 = (self.opcode >> 3) & 0b11;
+        let operant_size: u8 = self.opcode & BPF_OPCODE_SIZE_MASK;
         if operant_size != BPF_DW && operant_size != BPF_W {
             return Some(IllegalInstruction::UnsupportedAtomicWidth);
         }

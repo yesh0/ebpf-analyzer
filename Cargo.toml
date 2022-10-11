@@ -11,5 +11,3 @@ ebpf-consts = { path = "./crate/consts" }
 ebpf-macros = { path = "./crate/macros" }
 
 bitflags = "1.3"
-num-traits = "0.2"
-num-derive = "0.3"
