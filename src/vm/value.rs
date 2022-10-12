@@ -208,6 +208,57 @@ impl SignedPartialOrd for Wrapping<u64> {
     }
 }
 
+/// Treats the value as a pointer and provides access to the pointed structures
+pub trait Dereference where Self: Sized {
+    /// Tries to dereference the pointer
+    unsafe fn get_at(&self, offset: i16, size: usize) -> Option<Self>;
+    /// Tries to assign a value to the pointer
+    unsafe fn set_at(&self, offset: i16, size: usize, value: Self) -> bool;
+}
+
+fn unchecked_add(x: u64, y: i16) -> u64 {
+    if y >= 0 {
+        x + y as u64
+    } else {
+        x + (-y) as u64
+    }
+}
+
+impl Dereference for u64 {
+    unsafe fn get_at(&self, offset: i16, size: usize) -> Option<Self> {
+        let ptr = unchecked_add(*self, offset);
+        Some(match size {
+            8 => *(ptr as *const u8) as u64,
+            16 => *(ptr as *const u16) as u64,
+            32 => *(ptr as *const u32) as u64,
+            64 => *(ptr as *const u64) as u64,
+            _ => 0
+        })
+    }
+
+    unsafe fn set_at(&self, offset: i16, size: usize, value: Self) -> bool {
+        let ptr = unchecked_add(*self, offset);
+        match size {
+            8 => *(ptr as *mut u8) = value as u8,
+            16 => *(ptr as *mut u16) = value as u16,
+            32 => *(ptr as *mut u32) = value as u32,
+            64 => *(ptr as *mut u64) = value as u64,
+            _ => return false,
+        }
+        true
+    }
+}
+
+impl Dereference for Wrapping<u64> {
+    unsafe fn get_at(&self, offset: i16, size: usize) -> Option<Self> {
+        self.0.get_at(offset, size).map(|i| Wrapping(i))
+    }
+
+    unsafe fn set_at(&self, offset: i16, size: usize, value: Self) -> bool {
+        self.0.set_at(offset, size, value.0)
+    }
+}
+
 /// A value in the VM, compatible with `u64` but allowing injecting custom types
 pub trait VmValue:
     // Type conversion
@@ -233,6 +284,8 @@ pub trait VmValue:
     + SignedPartialOrd
     // Value state tracking
     + Verifiable
+    // Pointer logic
+    + Dereference
     // Primitive-like
     + Sized + Copy + Default
 {
@@ -240,6 +293,8 @@ pub trait VmValue:
     fn constant32(value: i32) -> Self;
     /// Creates a numberical value from `u64`
     fn constant64(value: u64) -> Self;
+    /// Creates a pointer to the stack
+    fn stack_ptr(value: u64) -> Self;
 }
 
 impl VmValue for u64 {
@@ -248,6 +303,10 @@ impl VmValue for u64 {
     }
 
     fn constant64(value: u64) -> Self {
+        value
+    }
+
+    fn stack_ptr(value: u64) -> Self {
         value
     }
 }
@@ -259,5 +318,9 @@ impl VmValue for Wrapping<u64> {
 
     fn constant64(value: u64) -> Self {
         Wrapping(u64::constant64(value))
+    }
+
+    fn stack_ptr(value: u64) -> Self {
+        Wrapping(value)
     }
 }

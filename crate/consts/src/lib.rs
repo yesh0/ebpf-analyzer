@@ -47,6 +47,8 @@ pub const STACK_SIZE: usize = 512;
 pub const WRITABLE_REGISTER_COUNT: u8 = 10;
 /// Readable register count, that is, R0, ..., R10
 pub const READABLE_REGISTER_COUNT: u8 = 11;
+/// Stack register id
+pub const STACK_REGISTER: u8 = READABLE_REGISTER_COUNT - 1;
 
 // eBPF op codes.
 // See also https://www.kernel.org/doc/Documentation/networking/filter.txt

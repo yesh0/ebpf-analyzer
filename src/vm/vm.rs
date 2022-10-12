@@ -1,4 +1,4 @@
-use ebpf_consts::{READABLE_REGISTER_COUNT, STACK_SIZE, WRITABLE_REGISTER_COUNT};
+use ebpf_consts::{READABLE_REGISTER_COUNT, STACK_SIZE, WRITABLE_REGISTER_COUNT, STACK_REGISTER};
 
 use super::value::VmValue;
 
@@ -95,11 +95,13 @@ impl<Value: VmValue> Vm<Value> for UncheckedVm<Value> {
 impl<Value: VmValue> UncheckedVm<Value> {
     /// Creates a zero-initialized VM
     pub fn new() -> Self {
-        UncheckedVm {
+        let mut vm = UncheckedVm {
             valid: true,
             pc: 0,
             registers: [Value::default(); READABLE_REGISTER_COUNT as usize],
             stack: [Value::default(); STACK_SIZE],
-        }
+        };
+        vm.registers[STACK_REGISTER as usize] = Value::stack_ptr(&vm.stack as *const Value as u64);
+        vm
     }
 }

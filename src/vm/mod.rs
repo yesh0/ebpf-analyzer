@@ -10,6 +10,7 @@ use crate::spec::Instruction;
 
 use self::{value::VmValue, vm::Vm};
 
+/// Runs (or, interprets) the code on the given VM
 pub fn run<Value: VmValue, M: Vm<Value>>(code: &[u64], vm: &mut M) {
     let mut pc = *vm.pc();
     while vm.is_valid() {
@@ -38,12 +39,14 @@ pub fn run<Value: VmValue, M: Vm<Value>>(code: &[u64], vm: &mut M) {
                 BPF_MOV: mov,
              ]
             ] => {
+                // Gettings the src operant
                 #?((K)) let src = Value::constant32(insn.imm);  ##
                 #?((X)) let src = *vm.get_reg(insn.src_reg());  ##
                 #?((ALU32))
                     let src = src.cast_u32();
                 ##
 
+                // Gettings the dst operant
                 let dst_r = insn.dst_reg();
                 #?((__mov__))
                     let dst = *vm.get_reg(dst_r);
@@ -123,6 +126,8 @@ pub fn run<Value: VmValue, M: Vm<Value>>(code: &[u64], vm: &mut M) {
                 let dst = *vm.get_reg(insn.dst_reg());
                 #?((K)) let src = Value::constant32(insn.imm);  ##
                 #?((X)) let src = *vm.get_reg(insn.src_reg());  ##
+
+                // Casting
                 #?((JMP32))
                     #?((BPF_JSGT)|(BPF_JSGE)|(BPF_JSLT)|(BPF_JSLE))
                         let dst = dst.cast_i32();
@@ -134,6 +139,7 @@ pub fn run<Value: VmValue, M: Vm<Value>>(code: &[u64], vm: &mut M) {
                     ##
                 ##
 
+                // Comparison
                 #?((__BPF_JSGT__,__BPF_JSGE__,__BPF_JSLT__,__BPF_JSLE__,__BPF_JSET__))
                     let result = dst.partial_cmp(&src);
                 ##
@@ -156,6 +162,55 @@ pub fn run<Value: VmValue, M: Vm<Value>>(code: &[u64], vm: &mut M) {
                 } else {
                     vm.invalidate();
                 }
+            }
+            // BPF_JA: Unconditional jump
+            [[BPF_JMP: JMP], [BPF_JA: JA]] => {
+                if insn.off >= 0 {
+                    pc += insn.off as usize;
+                } else {
+                    pc -= (-insn.off) as usize;
+                }
+            }
+            // BPF_EXIT: Exits
+            [[BPF_JMP: JMP], [BPF_EXIT: EXIT]] => {
+                return;
+            }
+            // TODO: BPF_CALL
+            // Store / load
+            [[BPF_LDX: LDX, BPF_STX: STX, BPF_ST: ST], [BPF_MEM: MEM],
+             [
+                BPF_B: "8",
+                BPF_H: "16",
+                BPF_W: "32",
+                BPF_DW: "64",
+             ]
+            ] => {
+                const SIZE: usize = #=2;
+                #?((LDX))
+                    let src = *vm.get_reg(insn.src_reg());
+                    if let Some(value) = unsafe { src.get_at(insn.off, SIZE) } {
+                        vm.set_reg(insn.dst_reg(), value);
+                    } else {
+                        vm.invalidate();
+                    }
+                ##
+                #?((STX))
+                    let dst = *vm.get_reg(insn.dst_reg());
+                    let src = *vm.get_reg(insn.src_reg());
+                    unsafe {
+                        if !dst.set_at(insn.off, SIZE, src) {
+                            vm.invalidate();
+                        }
+                    }
+                ##
+                #?((ST))
+                    let dst = *vm.get_reg(insn.dst_reg());
+                    unsafe {
+                        if !dst.set_at(insn.off, SIZE, Value::constant64(insn.imm as u32 as u64)) {
+                            vm.invalidate();
+                        }
+                    }
+                ##
             }
             _ => {
                 vm.invalidate();

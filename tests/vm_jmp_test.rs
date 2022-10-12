@@ -51,6 +51,9 @@ pub fn test_jumps() {
 
     assert_jumps(BPF_JMP32 | BPF_JSET | BPF_X, 0xF01, 0xF001, true);
     assert_jumps(BPF_JMP32 | BPF_JSET | BPF_X, 0xF0, 0x0F, false);
+
+    assert_jumps(BPF_JMP | BPF_JA, 0, 0, true);
+    assert_jumps(BPF_JMP | BPF_EXIT, 0, 0, true);
 }
 
 pub fn assert_jumps(op: u8, dst_v: u64, src_v: u64, jumps: bool) {
@@ -75,6 +78,8 @@ pub fn assert_jumps(op: u8, dst_v: u64, src_v: u64, jumps: bool) {
     ];
     run(&code, &mut vm);
     assert_eq!(vm.get_reg(0).0, if jumps { 0 } else { NUMBER });
-    assert!(!vm.is_valid());
-    assert_eq!(*vm.pc(), 2);
+    if op != BPF_JMP | BPF_EXIT {
+        assert!(!vm.is_valid());
+        assert_eq!(*vm.pc(), 2);
+    }
 }
