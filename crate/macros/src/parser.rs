@@ -19,6 +19,7 @@ pub struct OpcodeMatches {
     pub matches: Vec<MatchArm>,
     /// The variable name to match against
     pub value: Ident,
+    pub value_type: Ident,
 }
 
 /// A match arm in the macro
@@ -58,6 +59,13 @@ fn until_bracket(input: &ParseStream) -> syn::Result<Vec<Replacing>> {
 impl Parse for OpcodeMatches {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let value: Ident = input.parse()?;
+        let value_type = if !input.peek(Token!(,)) {
+            let _: Token!(as) = input.parse()?;
+            let t: Ident = input.parse()?;
+            t
+        } else {
+            Ident::new("u8", value.span())
+        };
         let _: Token!(,) = input.parse()?;
         let mut arms: Vec<MatchArm> = Vec::new();
         let mut attribute: Option<TokenStream> = None;
@@ -94,6 +102,7 @@ impl Parse for OpcodeMatches {
         }
         Ok(OpcodeMatches {
             value,
+            value_type,
             matches: arms,
         })
     }

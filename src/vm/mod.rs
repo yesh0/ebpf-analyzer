@@ -219,9 +219,11 @@ pub fn run<Value: VmValue, M: Vm<Value>>(code: &[u64], vm: &mut M) {
             }
             #[cfg(feature = "atomic32")]
             [[BPF_STX: STX], [BPF_ATOMIC: ATOMIC], [BPF_W: W]] => {
+                run_atomic(insn, vm, 32);
             }
             #[cfg(feature = "atomic64")]
             [[BPF_STX: STX], [BPF_ATOMIC: ATOMIC], [BPF_DW: DW]] => {
+                run_atomic(insn, vm, 64);
             }
             _ => {
                 vm.invalidate();
@@ -230,4 +232,55 @@ pub fn run<Value: VmValue, M: Vm<Value>>(code: &[u64], vm: &mut M) {
         };
         *vm.pc() = pc;
     }
+}
+
+fn run_atomic<Value: VmValue, M: Vm<Value>>(insn: Instruction, vm: &mut M, size: usize) {
+    let atomic_code = insn.imm as i32;
+    opcode_match! {
+        atomic_code as i32,
+        [[BPF_ATOMIC_FETCH: FETCH, BPF_ATOMIC_NO_FETCH: NO_FETCH],
+         [
+            BPF_ATOMIC_ADD: "fetch_add",
+            BPF_ATOMIC_OR : "fetch_or",
+            BPF_ATOMIC_AND: "fetch_and",
+            BPF_ATOMIC_XOR: "fetch_xor",
+         ]
+        ] => {
+            let src_r =  insn.src_reg();
+            let dst = *vm.get_reg(insn.dst_reg());
+            let src = *vm.get_reg(src_r);
+            let result = dst.#=1(insn.off, src, size);
+            if let None = result {
+                vm.invalidate();
+                return;
+            }
+            #?((FETCH))
+                if let Some(old) = result {
+                    vm.set_reg(src_r, old);
+                }
+            ##
+        }
+        [[BPF_ATOMIC_FETCH: FETCH], [BPF_ATOMIC_XCHG: XCHG]] => {
+            let src_r =  insn.src_reg();
+            let dst = *vm.get_reg(insn.dst_reg());
+            let src = *vm.get_reg(src_r);
+            if let Some(old) = dst.swap(insn.off, src, size) {
+                vm.set_reg(src_r, old);
+            } else {
+                vm.invalidate();
+            }
+        }
+        [[BPF_ATOMIC_FETCH: FETCH], [BPF_ATOMIC_CMPXCHG: CMPXCHG]] => {
+            let src_r =  insn.src_reg();
+            let dst = *vm.get_reg(insn.dst_reg());
+            let src = *vm.get_reg(src_r);
+            let expected = *vm.get_reg(0);
+            if let Some(old) = dst.compare_exchange(insn.off, expected, src, size) {
+                vm.set_reg(0, old);
+            } else {
+                vm.invalidate();
+            }
+        }
+        _ => vm.invalidate(),
+    };
 }

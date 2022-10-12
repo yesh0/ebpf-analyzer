@@ -133,6 +133,7 @@ impl SignedNeg for Wrapping<u64> {
     }
 }
 
+/// Implements the BPF_END operation
 pub trait ByteSwap {
     fn host_to_le(self, width: i32) -> Self;
     fn host_to_be(self, width: i32) -> Self;
@@ -194,6 +195,7 @@ impl ByteSwap for Wrapping<u64> {
     }
 }
 
+/// `PartialOrd` trait for unsigned types, since we have no way to track the sign for `u64`
 pub trait SignedPartialOrd {
     fn signed_partial_cmp(&self, other: &Self) -> Option<Ordering>;
 }

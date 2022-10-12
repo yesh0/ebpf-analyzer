@@ -192,6 +192,8 @@ pub const EXIT       : u8 = BPF_JMP   | BPF_EXIT;
 
 // Operation codes -- extra for BPF_STX class
 
+/// BPF STX ATMOIC immediate code modifier: default
+pub const BPF_ATOMIC_NO_FETCH : i32 = 0x00;
 /// BPF STX ATMOIC immediate code modifier: return the old value
 pub const BPF_ATOMIC_FETCH    : i32 = 0x01;
 /// BPF STX ATMOIC immediate code: atomic add

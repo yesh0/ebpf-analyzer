@@ -1,7 +1,7 @@
 // This file was partly generated from ../gen.sh
 
 /// Opcode components
-pub const OPCODES: [(&'static str, u8); 51] = [
+pub const OPCODES: [(&'static str, u8); 59] = [
     ("BPF_LD", 0x00),
     ("BPF_LDX", 0x01),
     ("BPF_ST", 0x02),
@@ -53,4 +53,12 @@ pub const OPCODES: [(&'static str, u8); 51] = [
     ("BPF_JLE", 0xb0),
     ("BPF_JSLT", 0xc0),
     ("BPF_JSLE", 0xd0),
+    ("BPF_ATOMIC_NO_FETCH", 0x00),
+    ("BPF_ATOMIC_FETCH", 0x01),
+    ("BPF_ATOMIC_ADD", 0x00),
+    ("BPF_ATOMIC_OR", 0x40),
+    ("BPF_ATOMIC_AND", 0x50),
+    ("BPF_ATOMIC_XOR", 0xa0),
+    ("BPF_ATOMIC_XCHG", 0xe0),
+    ("BPF_ATOMIC_CMPXCHG", 0xf0),
 ];

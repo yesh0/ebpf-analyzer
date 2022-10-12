@@ -1,5 +1,5 @@
 #!/bin/bash
-LINES=$(grep "u8 \?=" "`dirname $0`/../consts/src/lib.rs" | grep -v MASK | grep "pub const BPF" \
+LINES=$(grep "u8 \?=\\|i32 \?=" "`dirname $0`/../consts/src/lib.rs" | grep "0x\\|as" | grep -v MASK | grep "pub const BPF" \
   | awk '{ gsub(";", "", $7); print "    (\"" $3 "\", " $7 ")," }')
 COUNT=$(echo "$LINES" | wc --lines)
 
