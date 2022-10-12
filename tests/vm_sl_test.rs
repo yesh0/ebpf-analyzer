@@ -5,7 +5,7 @@ use ebpf_analyzer::vm::{
     vm::{UncheckedVm, Vm},
 };
 use ebpf_consts::{
-    mask::BPF_OPCODE_CLASS_MASK, BPF_DW, BPF_LDX, BPF_MEM, BPF_ST, BPF_STX, STACK_REGISTER, BPF_W, BPF_H, BPF_B,
+    mask::BPF_OPCODE_CLASS_MASK, BPF_DW, BPF_LDX, BPF_MEM, BPF_ST, BPF_STX, STACK_REGISTER, BPF_W, BPF_H, BPF_B, BPF_LD, BPF_IMM,
 };
 
 #[test]
@@ -42,6 +42,21 @@ pub fn test_store_load() {
             0x00000000000000FFu64.to_le(),
         );
     }
+}
+
+#[test]
+pub fn test_imm64() {
+    let mut vm = UncheckedVm::<Wrapping<u64>>::new();
+    assert!(vm.is_valid());
+
+    let code = [
+        (BPF_LD | BPF_IMM | BPF_DW) as u64 | (0xDEADBEEFu64 << 32),
+        0 | (0xCAFEBABEu64 << 32),
+        0,
+    ];
+    run(&code, &mut vm);
+    assert_eq!(vm.get_reg(0).0, 0xCAFEBABE_DEADBEEFu64);
+    assert_eq!(*vm.pc(), 2);
 }
 
 pub fn assert_store_load(op: u8, value: u64, result: u64) {

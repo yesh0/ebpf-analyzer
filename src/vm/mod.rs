@@ -212,6 +212,11 @@ pub fn run<Value: VmValue, M: Vm<Value>>(code: &[u64], vm: &mut M) {
                     }
                 ##
             }
+            [[BPF_LD: LD], [BPF_IMM: IMM], [BPF_DW: DW]] => {
+                let value = insn.imm as u32 as u64 | (code[pc] & 0xFFFF_FFFF_0000_0000);
+                vm.set_reg(insn.dst_reg(), Value::constant64(value));
+                pc += 1;
+            }
             _ => {
                 vm.invalidate();
                 break;
