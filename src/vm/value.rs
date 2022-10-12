@@ -4,6 +4,8 @@
 
 use core::{ops::*, num::Wrapping, cmp::Ordering};
 
+use ebpf_atomic::Atomic;
+
 /// Representing casting between integer types
 ///
 /// It only handles truncation.
@@ -286,6 +288,7 @@ pub trait VmValue:
     + Verifiable
     // Pointer logic
     + Dereference
+    + Atomic
     // Primitive-like
     + Sized + Copy + Default
 {

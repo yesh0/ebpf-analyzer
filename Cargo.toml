@@ -12,7 +12,7 @@ atomic32 = ["ebpf-atomic/atomic32"]
 atomic64 = ["ebpf-atomic/atomic64"]
 
 [dependencies]
-ebpf-atomic = { path = "./crate/atomic" }
+ebpf-atomic = { path = "./crate/atomic", optional = true }
 ebpf-consts = { path = "./crate/consts" }
 ebpf-macros = { path = "./crate/macros" }
 

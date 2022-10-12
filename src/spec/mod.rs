@@ -115,7 +115,7 @@ impl Instruction {
             BPF_LDX => self.is_store_load_valid::<true, false>(),
             BPF_ST => self.is_store_load_valid::<false, true>(),
             BPF_STX => {
-                if (self.opcode >> 5) == BPF_ATOMIC {
+                if (self.opcode & BPF_OPCODE_MODIFIER_MASK) == BPF_ATOMIC {
                     self.is_atomic_store_valid()
                 } else {
                     self.is_store_load_valid::<false, false>()
@@ -336,7 +336,7 @@ impl Instruction {
     /// 3. Other instructions store into src_reg if the BPF_FETCH flag is set.
     fn is_atomic_store_valid(self) -> Option<IllegalInstruction> {
         let operant_size: u8 = self.opcode & BPF_OPCODE_SIZE_MASK;
-        if operant_size != BPF_DW && operant_size != BPF_W {
+        if !((cfg!(atomic64) && operant_size == BPF_DW) || (cfg!(atomic32) && operant_size == BPF_W)) {
             return Some(IllegalInstruction::UnsupportedAtomicWidth);
         }
 
