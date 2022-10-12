@@ -1,8 +1,10 @@
+use proc_macro2::TokenStream;
+use quote::ToTokens;
 use syn::{
-    bracketed,
+    braced, bracketed,
     parse::{Parse, ParseStream},
     punctuated::Punctuated,
-    token, Ident, LitStr, Token, braced,
+    token, Ident, LitStr, Token,
 };
 
 use crate::{
@@ -26,6 +28,8 @@ pub struct MatchArm {
     pub combinations: Vec<Aliases>,
     /// The code blocks following the combination part
     pub code: CodeBlock,
+    /// Headers like `#[cfg(...)]`
+    pub header: Option<TokenStream>,
 }
 
 pub type Alias = String;
@@ -36,8 +40,17 @@ pub struct Aliases(pub Vec<(Alias, &'static str)>);
 /// Reads all code blocks until meeting a top-level bracket
 fn until_bracket(input: &ParseStream) -> syn::Result<Vec<Replacing>> {
     let mut blocks: Vec<Replacing> = Vec::new();
-    while !input.is_empty() && !input.peek(token::Bracket) {
-        blocks.push(Replacing::None(input.parse()?));
+    while !input.is_empty() && !input.peek(token::Bracket) && !input.peek(Token!(#)) {
+        blocks.push(Replacing::None(
+            input
+                .step(|c| {
+                    if let Some((tree, c)) = c.token_tree() {
+                        Ok((tree, c))
+                    } else {
+                        Err(c.error("Ended"))
+                    }
+                })?.to_token_stream(),
+        ));
     }
     Ok(blocks)
 }
@@ -47,11 +60,36 @@ impl Parse for OpcodeMatches {
         let value: Ident = input.parse()?;
         let _: Token!(,) = input.parse()?;
         let mut arms: Vec<MatchArm> = Vec::new();
+        let mut attribute: Option<TokenStream> = None;
         while !input.is_empty() {
             arms.push(if input.peek(token::Bracket) {
-                input.parse()?
+                let mut arm: MatchArm = input.parse()?;
+                if let Some(attr) = attribute.take() {
+                    arm.header.replace(attr);
+                }
+                arm
+            } else if input.peek(Token!(#)) {
+                let hash: Token!(#) = input.parse()?;
+                let tree = input.step(|c| if let Some(i) = c.token_tree() {
+                    Ok(i)
+                } else {
+                    Err(c.error("Unexpected end"))
+                })?;
+                let mut s = hash.to_token_stream();
+                s.extend(tree.to_token_stream());
+                if let Some(mut prev) = attribute.take() {
+                    prev.extend(s);
+                    attribute.replace(prev);
+                } else {
+                    attribute.replace(s);
+                }
+                continue;
             } else {
-                MatchArm::as_is(CodeBlock(until_bracket(&input)?))
+                let mut code = until_bracket(&input)?;
+                if let Some(attr) = attribute.take() {
+                    code.insert(0, Replacing::None(attr));
+                }
+                MatchArm::as_is(CodeBlock(code))
             });
         }
         Ok(OpcodeMatches {
@@ -65,6 +103,7 @@ impl MatchArm {
     pub fn as_is(code: CodeBlock) -> MatchArm {
         MatchArm {
             combinations: Vec::new(),
+            header: None,
             code,
         }
     }
@@ -82,6 +121,7 @@ impl Parse for MatchArm {
         let code: CodeBlock = code.parse()?;
         Ok(MatchArm {
             combinations: Vec::from_iter(combinations),
+            header: None,
             code,
         })
     }

@@ -217,6 +217,12 @@ pub fn run<Value: VmValue, M: Vm<Value>>(code: &[u64], vm: &mut M) {
                 vm.set_reg(insn.dst_reg(), Value::constant64(value));
                 pc += 1;
             }
+            #[cfg(feature = "atomic32")]
+            [[BPF_STX: STX], [BPF_ATOMIC: ATOMIC], [BPF_W: W]] => {
+            }
+            #[cfg(feature = "atomic64")]
+            [[BPF_STX: STX], [BPF_ATOMIC: ATOMIC], [BPF_DW: DW]] => {
+            }
             _ => {
                 vm.invalidate();
                 break;

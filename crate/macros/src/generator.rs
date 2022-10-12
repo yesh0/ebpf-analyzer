@@ -18,7 +18,7 @@ pub fn generate(matches: &OpcodeMatches) -> TokenStream {
         if arm.combinations.is_empty() {
             construct_code(&Vec::new(), &Vec::new(), &arm.code, &mut branches);
         } else {
-            add_all_combinations(&arm.combinations, &arm.code, &mut branches, &mut consts);
+            add_all_combinations(&arm.combinations, &arm.code, &mut branches, &mut consts, &arm.header);
         }
     }
     consts.extend(quote! {
@@ -50,6 +50,7 @@ fn add_all_combinations(
     code: &CodeBlock,
     branches: &mut TokenStream2,
     consts: &mut TokenStream2,
+    header: &Option<TokenStream2>,
 ) {
     let mut current: Vec<usize> = Vec::new();
     current.resize(combinations.len(), 0);
@@ -73,9 +74,16 @@ fn add_all_combinations(
         consts.extend(quote! {
             const #const_name : u8 = #(#components)|*;
         });
-        branches.extend(quote! {
-            #const_name => { #match_code }
-        });
+        if let Some(header) = header {
+            branches.extend(quote! {
+                #header
+                #const_name => { #match_code }
+            });
+        } else {
+            branches.extend(quote! {
+                #const_name => { #match_code }
+            });
+        }
         if !increment(&mut current, combinations) {
             break;
         }

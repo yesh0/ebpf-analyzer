@@ -1,0 +1,9 @@
+[package]
+name = "ebpf-atomic"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = ["atomic32", "atomic64"]
+atomic32 = []
+atomic64 = []
