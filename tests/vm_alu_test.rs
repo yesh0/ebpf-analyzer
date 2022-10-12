@@ -2,7 +2,7 @@ use std::num::Wrapping;
 
 use ebpf_analyzer::vm::{
     run,
-    vm::{UncheckedVm, Vm},
+    vm::{UncheckedVm, Vm, NoOpTracker},
 };
 use ebpf_consts::{
     BPF_ADD, BPF_ALU, BPF_ALU64, BPF_DIV, BPF_K, BPF_MOD, BPF_MUL, BPF_SUB, BPF_X,
@@ -128,7 +128,7 @@ pub fn assert_biop(op: u8, dst_v: u64, src_v: u64, result: u64) {
         op as u64 | (src << 12) | (dst << 8)
     };
     let code = vec![c, 0];
-    run(&code, &mut vm);
+    run(&code, &mut vm, &mut NoOpTracker{});
     assert_eq!(vm.get_reg(dst as u8).0, result);
     assert!(!vm.is_valid());
     assert_eq!(*vm.pc(), 1);

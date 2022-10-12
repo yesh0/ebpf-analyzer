@@ -2,7 +2,7 @@ use std::num::Wrapping;
 
 use ebpf_analyzer::vm::{
     run,
-    vm::{UncheckedVm, Vm},
+    vm::{UncheckedVm, Vm, NoOpTracker},
 };
 use ebpf_consts::{
     mask::BPF_OPCODE_CLASS_MASK, BPF_DW, BPF_LDX, BPF_MEM, BPF_ST, BPF_STX, STACK_REGISTER, BPF_W, BPF_H, BPF_B, BPF_LD, BPF_IMM,
@@ -54,7 +54,7 @@ pub fn test_imm64() {
         0 | (0xCAFEBABEu64 << 32),
         0,
     ];
-    run(&code, &mut vm);
+    run(&code, &mut vm, &mut NoOpTracker{});
     assert_eq!(vm.get_reg(0).0, 0xCAFEBABE_DEADBEEFu64);
     assert_eq!(*vm.pc(), 2);
 }
@@ -80,7 +80,7 @@ pub fn assert_store_load(op: u8, value: u64, result: u64) {
         _ => panic!("Invalid opcode"),
     };
     let code = [c, 0];
-    run(&code, &mut vm);
+    run(&code, &mut vm, &mut NoOpTracker{});
     assert!(!vm.is_valid());
     assert_eq!(*vm.pc(), 1);
     if op & BPF_OPCODE_CLASS_MASK == BPF_LDX {

@@ -2,7 +2,7 @@ use std::num::Wrapping;
 
 use ebpf_analyzer::vm::{
     run,
-    vm::{UncheckedVm, Vm},
+    vm::{UncheckedVm, Vm, NoOpTracker},
 };
 use ebpf_consts::*;
 
@@ -76,7 +76,7 @@ pub fn assert_jumps(op: u8, dst_v: u64, src_v: u64, jumps: bool) {
         (BPF_ALU64 | BPF_MOV | BPF_K) as u64 | (NUMBER << 32),
         0,
     ];
-    run(&code, &mut vm);
+    run(&code, &mut vm, &mut NoOpTracker{});
     assert_eq!(vm.get_reg(0).0, if jumps { 0 } else { NUMBER });
     if op != BPF_JMP | BPF_EXIT {
         assert!(!vm.is_valid());

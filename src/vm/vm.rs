@@ -1,3 +1,5 @@
+use core::cmp::Ordering;
+
 use ebpf_consts::{READABLE_REGISTER_COUNT, STACK_SIZE, WRITABLE_REGISTER_COUNT, STACK_REGISTER};
 
 use super::value::VmValue;
@@ -26,6 +28,20 @@ pub trait Vm<Value: VmValue> {
     fn get_stack(&mut self, i: usize) -> &Value;
     /// Sets the value for a stack member
     fn set_stack(&mut self, i: usize, v: Value);
+}
+
+/// Tracks branching statements
+pub trait BranchTracker {
+    /// Unconditional jumps
+    /// 
+    /// Returns `true` to stop the interpreter.
+    fn jump_to(&mut self, pc: usize) -> bool;
+    /// Conditional jumps
+    /// 
+    /// Returns `true` to stop the interpreter.
+    fn conditional_jump(&mut self, result: &Option<Ordering>, expected: &[Ordering], pc: usize) -> bool;
+    /// Exits
+    fn exit(&mut self);
 }
 
 /// A VM impl
@@ -103,5 +119,21 @@ impl<Value: VmValue> UncheckedVm<Value> {
         };
         vm.registers[STACK_REGISTER as usize] = Value::stack_ptr(&vm.stack as *const Value as u64);
         vm
+    }
+}
+
+/// Tracks nothing
+pub struct NoOpTracker;
+
+impl BranchTracker for NoOpTracker {
+    fn jump_to(&mut self, _pc: usize) -> bool {
+        false
+    }
+
+    fn conditional_jump(&mut self, _result: &Option<Ordering>, _expected: &[Ordering], _pc: usize) -> bool {
+        false
+    }
+
+    fn exit(&mut self) {
     }
 }

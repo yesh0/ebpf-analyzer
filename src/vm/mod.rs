@@ -8,10 +8,10 @@ use ebpf_macros::opcode_match;
 
 use crate::spec::Instruction;
 
-use self::{value::VmValue, vm::Vm};
+use self::{value::VmValue, vm::{Vm, BranchTracker}};
 
 /// Runs (or, interprets) the code on the given VM
-pub fn run<Value: VmValue, M: Vm<Value>>(code: &[u64], vm: &mut M) {
+pub fn run<Value: VmValue, M: Vm<Value>, T: BranchTracker>(code: &[u64], vm: &mut M, tracker: &mut T) {
     let mut pc = *vm.pc();
     while vm.is_valid() {
         let insn = Instruction::from_raw(code[pc]);
@@ -61,12 +61,10 @@ pub fn run<Value: VmValue, M: Vm<Value>>(code: &[u64], vm: &mut M) {
                 ##
 
                 #?((div)|(rem))
-                    let src = if src == Value::constant32(0) {
+                    if src == Value::constant32(0) {
                         vm.invalidate();
-                        Value::constant32(1)
-                    } else {
-                        src
-                    };
+                        break;
+                    }
                 ##
 
                 #?((mov))
@@ -151,13 +149,17 @@ pub fn run<Value: VmValue, M: Vm<Value>>(code: &[u64], vm: &mut M) {
                 ##
 
                 let allowed = #=2;
+                let target = if insn.off >= 0 {
+                    pc + (insn.off as usize)
+                } else {
+                    pc - ((-insn.off) as usize)
+                };
+                if tracker.conditional_jump(&result, &allowed, target) {
+                    break;
+                }
                 if let Some(cmp) = result {
                     if allowed.contains(&cmp) {
-                        if insn.off >= 0 {
-                            pc += insn.off as usize;
-                        } else {
-                            pc -= (-insn.off) as usize;
-                        }
+                        pc = target;
                     }
                 } else {
                     vm.invalidate();
@@ -170,10 +172,14 @@ pub fn run<Value: VmValue, M: Vm<Value>>(code: &[u64], vm: &mut M) {
                 } else {
                     pc -= (-insn.off) as usize;
                 }
+                if tracker.jump_to(pc) {
+                    break;
+                }
             }
             // BPF_EXIT: Exits
             [[BPF_JMP: JMP], [BPF_EXIT: EXIT]] => {
-                return;
+                tracker.exit();
+                break;
             }
             // TODO: BPF_CALL
             // Store / load

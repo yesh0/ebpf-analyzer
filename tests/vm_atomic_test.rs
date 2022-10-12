@@ -2,7 +2,7 @@ use std::num::Wrapping;
 
 use ebpf_analyzer::vm::{
     run,
-    vm::{UncheckedVm, Vm},
+    vm::{UncheckedVm, Vm, NoOpTracker},
 };
 use ebpf_consts::{
     BPF_DW, BPF_STX, STACK_REGISTER, BPF_ATOMIC, BPF_ATOMIC_CMPXCHG, BPF_ATOMIC_ADD, BPF_ATOMIC_FETCH, BPF_ATOMIC_OR, BPF_ATOMIC_AND, BPF_ATOMIC_XOR, BPF_ATOMIC_XCHG,
@@ -44,7 +44,7 @@ pub fn assert_atomic(imm: i32, r0: u64, src_v: u64, target: u64, expected: u64, 
     let regs = ((src << 4) | stack) << 8;
     let c = opcode as u64 | regs | offset | ((imm as u64) << 32);
     let code = [c, 0];
-    run(&code, &mut vm);
+    run(&code, &mut vm, &mut NoOpTracker{});
     assert!(!vm.is_valid());
     assert_eq!(*vm.pc(), 1);
 
