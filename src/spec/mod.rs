@@ -3,9 +3,6 @@ use core::fmt::Debug;
 use ebpf_consts::*;
 use ebpf_consts::mask::*;
 
-pub mod state;
-pub mod value;
-
 pub type CodeOffset = usize;
 
 /// BPF instruction

@@ -1,3 +1,5 @@
+//! Implements a generic interpreter and a tiny VM.
+
 pub mod value;
 pub mod vm;
 
@@ -40,8 +42,8 @@ pub fn run<Value: VmValue, M: Vm<Value>, T: BranchTracker>(code: &[u64], vm: &mu
              ]
             ] => {
                 // Gettings the src operant
-                #?((K)) let src = Value::constant32(insn.imm);  ##
-                #?((X)) let src = *vm.get_reg(insn.src_reg());  ##
+                #?((K)) let src = Value::constant32(insn.imm);         ##
+                #?((X)) let src = vm.get_reg(insn.src_reg()).clone();  ##
                 #?((ALU32))
                     let src = src.cast_u32();
                 ##
@@ -49,7 +51,7 @@ pub fn run<Value: VmValue, M: Vm<Value>, T: BranchTracker>(code: &[u64], vm: &mu
                 // Gettings the dst operant
                 let dst_r = insn.dst_reg();
                 #?((__mov__))
-                    let dst = *vm.get_reg(dst_r);
+                    let dst = vm.get_reg(dst_r).clone();
                     #?((ALU32))
                         #?((signed_shr))
                             let dst = dst.cast_i32();
@@ -83,7 +85,7 @@ pub fn run<Value: VmValue, M: Vm<Value>, T: BranchTracker>(code: &[u64], vm: &mu
              ]
             ] => {
                 let dst_r = insn.dst_reg();
-                let dst = *vm.get_reg(dst_r);
+                let dst = vm.get_reg(dst_r).clone();
                 #?((ALU32))
                     let dst = dst.cast_i32();
                 ##
@@ -98,7 +100,7 @@ pub fn run<Value: VmValue, M: Vm<Value>, T: BranchTracker>(code: &[u64], vm: &mu
              ]
             ] => {
                 let dst_r = insn.dst_reg();
-                let dst = *vm.get_reg(dst_r);
+                let dst = vm.get_reg(dst_r).clone();
                 let result = dst.#=2(insn.imm);
                 vm.set_reg(dst_r, result);
             }
@@ -121,9 +123,9 @@ pub fn run<Value: VmValue, M: Vm<Value>, T: BranchTracker>(code: &[u64], vm: &mu
                 BPF_JSET: "[Less, Greater]",
              ]
             ] => {
-                let dst = *vm.get_reg(insn.dst_reg());
-                #?((K)) let src = Value::constant32(insn.imm);  ##
-                #?((X)) let src = *vm.get_reg(insn.src_reg());  ##
+                let dst = vm.get_reg(insn.dst_reg()).clone();
+                #?((K)) let src = Value::constant32(insn.imm);         ##
+                #?((X)) let src = vm.get_reg(insn.src_reg()).clone();  ##
 
                 // Casting
                 #?((JMP32))
@@ -193,7 +195,7 @@ pub fn run<Value: VmValue, M: Vm<Value>, T: BranchTracker>(code: &[u64], vm: &mu
             ] => {
                 const SIZE: usize = #=2;
                 #?((LDX))
-                    let src = *vm.get_reg(insn.src_reg());
+                    let src = vm.get_reg(insn.src_reg()).clone();
                     if let Some(value) = unsafe { src.get_at(insn.off, SIZE) } {
                         vm.set_reg(insn.dst_reg(), value);
                     } else {
@@ -201,8 +203,8 @@ pub fn run<Value: VmValue, M: Vm<Value>, T: BranchTracker>(code: &[u64], vm: &mu
                     }
                 ##
                 #?((STX))
-                    let dst = *vm.get_reg(insn.dst_reg());
-                    let src = *vm.get_reg(insn.src_reg());
+                    let dst = vm.get_reg(insn.dst_reg()).clone();
+                    let src = vm.get_reg(insn.src_reg()).clone();
                     unsafe {
                         if !dst.set_at(insn.off, SIZE, src) {
                             vm.invalidate();
@@ -210,7 +212,7 @@ pub fn run<Value: VmValue, M: Vm<Value>, T: BranchTracker>(code: &[u64], vm: &mu
                     }
                 ##
                 #?((ST))
-                    let dst = *vm.get_reg(insn.dst_reg());
+                    let dst = vm.get_reg(insn.dst_reg()).clone();
                     unsafe {
                         if !dst.set_at(insn.off, SIZE, Value::constant64(insn.imm as u32 as u64)) {
                             vm.invalidate();
@@ -253,8 +255,8 @@ fn run_atomic<Value: VmValue, M: Vm<Value>>(insn: Instruction, vm: &mut M, size:
          ]
         ] => {
             let src_r =  insn.src_reg();
-            let dst = *vm.get_reg(insn.dst_reg());
-            let src = *vm.get_reg(src_r);
+            let dst = vm.get_reg(insn.dst_reg()).clone();
+            let src = vm.get_reg(src_r).clone();
             let result = dst.#=1(insn.off, src, size);
             if let None = result {
                 vm.invalidate();
@@ -268,8 +270,8 @@ fn run_atomic<Value: VmValue, M: Vm<Value>>(insn: Instruction, vm: &mut M, size:
         }
         [[BPF_ATOMIC_FETCH: FETCH], [BPF_ATOMIC_XCHG: XCHG]] => {
             let src_r =  insn.src_reg();
-            let dst = *vm.get_reg(insn.dst_reg());
-            let src = *vm.get_reg(src_r);
+            let dst = vm.get_reg(insn.dst_reg()).clone();
+            let src = vm.get_reg(src_r).clone();
             if let Some(old) = dst.swap(insn.off, src, size) {
                 vm.set_reg(src_r, old);
             } else {
@@ -278,9 +280,9 @@ fn run_atomic<Value: VmValue, M: Vm<Value>>(insn: Instruction, vm: &mut M, size:
         }
         [[BPF_ATOMIC_FETCH: FETCH], [BPF_ATOMIC_CMPXCHG: CMPXCHG]] => {
             let src_r =  insn.src_reg();
-            let dst = *vm.get_reg(insn.dst_reg());
-            let src = *vm.get_reg(src_r);
-            let expected = *vm.get_reg(0);
+            let dst = vm.get_reg(insn.dst_reg()).clone();
+            let src = vm.get_reg(src_r).clone();
+            let expected = vm.get_reg(0).clone();
             if let Some(old) = dst.compare_exchange(insn.off, expected, src, size) {
                 vm.set_reg(0, old);
             } else {

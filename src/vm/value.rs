@@ -2,7 +2,7 @@
 //!
 //! These traits
 
-use core::{ops::*, num::Wrapping, cmp::Ordering};
+use core::{cmp::Ordering, num::Wrapping, ops::*};
 
 use ebpf_atomic::Atomic;
 
@@ -142,9 +142,7 @@ pub trait ByteSwap {
 impl ByteSwap for u64 {
     fn host_to_le(self, width: i32) -> Self {
         match width {
-            64 => {
-                self.to_le()
-            }
+            64 => self.to_le(),
             32 => {
                 let lower = (self as u32).to_le();
                 let upper = ((self >> 32) as u32).to_le();
@@ -164,9 +162,7 @@ impl ByteSwap for u64 {
 
     fn host_to_be(self, width: i32) -> Self {
         match width {
-            64 => {
-                self.to_be()
-            }
+            64 => self.to_be(),
             32 => {
                 let lower = (self as u32).to_be();
                 let upper = ((self >> 32) as u32).to_be();
@@ -213,7 +209,10 @@ impl SignedPartialOrd for Wrapping<u64> {
 }
 
 /// Treats the value as a pointer and provides access to the pointed structures
-pub trait Dereference where Self: Sized {
+pub trait Dereference
+where
+    Self: Sized,
+{
     /// Tries to dereference the pointer
     unsafe fn get_at(&self, offset: i16, size: usize) -> Option<Self>;
     /// Tries to assign a value to the pointer
@@ -236,7 +235,7 @@ impl Dereference for u64 {
             16 => *(ptr as *const u16) as u64,
             32 => *(ptr as *const u32) as u64,
             64 => *(ptr as *const u64) as u64,
-            _ => 0
+            _ => 0,
         })
     }
 
@@ -263,8 +262,8 @@ impl Dereference for Wrapping<u64> {
     }
 }
 
-/// A value in the VM, compatible with `u64` but allowing injecting custom types
-pub trait VmValue:
+/// Scalar operations
+pub trait VmScalar:
     // Type conversion
     Downcast
     // Binary ALU operators: Algebraic
@@ -286,23 +285,28 @@ pub trait VmValue:
     + PartialOrd<Self>
     + PartialEq<Self>
     + SignedPartialOrd
+    // Primitive-like
+    + Sized + Clone + Default {
+    /// Creates a numberical value from `i32`
+    fn constant32(value: i32) -> Self;
+    /// Creates a numberical value from `u64`
+    fn constant64(value: u64) -> Self;
+}
+
+/// A value in the VM, compatible with `u64` but allowing injecting custom types
+pub trait VmValue:
+    VmScalar
     // Value state tracking
     + Verifiable
     // Pointer logic
     + Dereference
     + Atomic
-    // Primitive-like
-    + Sized + Copy + Default
 {
-    /// Creates a numberical value from `i32`
-    fn constant32(value: i32) -> Self;
-    /// Creates a numberical value from `u64`
-    fn constant64(value: u64) -> Self;
     /// Creates a pointer to the stack
     fn stack_ptr(value: u64) -> Self;
 }
 
-impl VmValue for u64 {
+impl VmScalar for u64 {
     fn constant32(value: i32) -> Self {
         (value as i64) as u64
     }
@@ -310,13 +314,15 @@ impl VmValue for u64 {
     fn constant64(value: u64) -> Self {
         value
     }
+}
 
+impl VmValue for u64 {
     fn stack_ptr(value: u64) -> Self {
         value
     }
 }
 
-impl VmValue for Wrapping<u64> {
+impl VmScalar for Wrapping<u64> {
     fn constant32(value: i32) -> Self {
         Wrapping(u64::constant32(value))
     }
@@ -324,7 +330,9 @@ impl VmValue for Wrapping<u64> {
     fn constant64(value: u64) -> Self {
         Wrapping(u64::constant64(value))
     }
+}
 
+impl VmValue for Wrapping<u64> {
     fn stack_ptr(value: u64) -> Self {
         Wrapping(value)
     }

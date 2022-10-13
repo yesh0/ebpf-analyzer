@@ -1,5 +1,6 @@
 use core::cmp::Ordering;
 
+use alloc::vec::Vec;
 use ebpf_consts::{READABLE_REGISTER_COUNT, STACK_SIZE, WRITABLE_REGISTER_COUNT, STACK_REGISTER};
 
 use super::value::VmValue;
@@ -49,7 +50,7 @@ pub struct UncheckedVm<Value: VmValue> {
     valid: bool,
     pc: usize,
     registers: [Value; READABLE_REGISTER_COUNT as usize],
-    stack: [Value; STACK_SIZE],
+    stack: Vec<Value>,
 }
 
 impl<Value: VmValue> Vm<Value> for UncheckedVm<Value> {
@@ -114,10 +115,11 @@ impl<Value: VmValue> UncheckedVm<Value> {
         let mut vm = UncheckedVm {
             valid: true,
             pc: 0,
-            registers: [Value::default(); READABLE_REGISTER_COUNT as usize],
-            stack: [Value::default(); STACK_SIZE],
+            registers: Default::default(),
+            stack: Vec::new(),
         };
-        vm.registers[STACK_REGISTER as usize] = Value::stack_ptr(&vm.stack as *const Value as u64);
+        vm.stack.resize(STACK_SIZE, Value::default());
+        vm.registers[STACK_REGISTER as usize] = Value::stack_ptr(vm.stack.as_ptr() as u64);
         vm
     }
 }
