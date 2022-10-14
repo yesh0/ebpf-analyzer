@@ -2,7 +2,7 @@
 
 mod algorithm;
 
-use core::{pin::Pin, cell::RefCell};
+use core::{cell::RefCell, pin::Pin};
 
 pub use algorithm::DfsResult;
 use alloc::{collections::BTreeMap, rc::Rc};
@@ -15,7 +15,9 @@ type WeakNode = PinWeak<RefCell<Node>>;
 type NodeId = u64;
 
 enum Anchor {
+    /// (rel, other_node) where self >= other_node + rel
     Node((i64, WeakNode)),
+    /// constant, where self >= constant
     Constant(u64),
 }
 
@@ -28,22 +30,25 @@ struct Node {
 
 impl Node {
     fn new() -> Node {
-        Node { outgoing: BTreeMap::new(), incoming: BTreeMap::new() }
+        Node {
+            outgoing: BTreeMap::new(),
+            incoming: BTreeMap::new(),
+        }
     }
 
     /// Returns the address of this node as an id
-    /// 
+    ///
     /// The node must be pinned to have the id fixed.
     fn id(&self) -> NodeId {
         self as *const Self as NodeId
     }
 }
 
-/// A node representing a number in the graph
-/// 
+/// A Rc to a node representing a number in the graph
+///
 /// Each edge in the graph represents an inequality like `a >= b + constant`,
 /// with the constant as its weight (which may be negative).
-/// 
+///
 /// Having an edge connecting to a constant like `a >= constant` is called anchored.
 pub struct GraphNode(RcNode);
 
@@ -73,11 +78,16 @@ impl GraphNode {
     }
 
     /// Constructs a `self >= other + weight` linkage
-    /// 
+    ///
     /// Existing linkages get merged.
     pub fn connect_to(&self, other: &GraphNode, mut weight: i64) {
         let id = self.id();
         let other_id = other.id();
+
+        if id == other_id {
+            return;
+        }
+
         let from_self = &mut self.0.borrow_mut().outgoing;
         let to_other = &mut other.0.borrow_mut().incoming;
 
@@ -118,7 +128,57 @@ impl GraphNode {
         self.anchor_to(constant);
     }
 
-    pub fn reachable_within(&self, other: &GraphNode, dfs_limit: usize, min_cost: i64) -> DfsResult {
+    pub fn reachable_within(
+        &self,
+        other: &GraphNode,
+        dfs_limit: usize,
+        min_cost: i64,
+    ) -> DfsResult {
         algorithm::limited_dfs(self, dfs_limit, other, min_cost)
+    }
+}
+
+impl Drop for Node {
+    fn drop(&mut self) {
+        let id = self.id();
+        for (_other_id, anchor) in self.outgoing.iter() {
+            match anchor {
+                Anchor::Node((rel, other_weak)) => {
+                    Node::unlink(id, *rel, other_weak, &self.incoming);
+                }
+                Anchor::Constant(c) => {
+                    for (_, anchor) in self.incoming.iter() {
+                        if let Anchor::Node((upper_rel, upper)) = anchor {
+                            if let Some(up) = upper.upgrade() {
+                                GraphNode(up).anchor_to((upper_rel + (*c as i64)) as u64);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+impl Node {
+    fn unlink(id: u64, rel: i64, other_weak: &WeakNode, incoming: &Edges) {
+        if let Some(other) = other_weak.upgrade() {
+            let mut other_inner = other.borrow_mut();
+            other_inner.incoming.remove(&id);
+            drop(other_inner);
+
+            for (_, anchor) in incoming.iter() {
+                match anchor {
+                    Anchor::Node((upper_rel, upper)) => {
+                        if let Some(up) = upper.upgrade() {
+                            GraphNode(up).connect_to(&GraphNode(other.clone()), upper_rel + rel);
+                        }
+                    }
+                    Anchor::Constant(c) => {
+                        GraphNode(other.clone()).anchor_from(*c - rel as u64);
+                    }
+                }
+            }
+        }
     }
 }
