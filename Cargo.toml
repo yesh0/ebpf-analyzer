@@ -14,6 +14,7 @@ atomic64 = ["ebpf-atomic/atomic64"]
 [dependencies]
 ebpf-atomic = { path = "./crate/atomic", optional = true }
 ebpf-consts = { path = "./crate/consts" }
+ebpf-graphs = { path = "./crate/graphs" }
 ebpf-macros = { path = "./crate/macros" }
 
 bitflags = "1.3"
