@@ -1,0 +1,25 @@
+{
+  "name": "ebpf-doc",
+  "version": "1.0.0",
+  "description": "Notes on eBPF",
+  "main": "index.js",
+  "scripts": {
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:serve": "vitepress serve docs"
+  },
+  "keywords": [],
+  "author": "Yesh",
+  "license": "CC-BY-SA-4.0",
+  "devDependencies": {
+    "vitepress": "1.0.0-alpha.22",
+    "vue": "^3.2.41"
+  },
+  "pnpm": {
+    "peerDependencyRules": {
+      "ignoreMissing": [
+        "@algolia/client-search"
+      ]
+    }
+  }
+}
