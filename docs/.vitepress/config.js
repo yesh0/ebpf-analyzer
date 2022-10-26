@@ -20,6 +20,13 @@ export default {
           { text: 'Resources', link: '/resources' },
         ],
       },
+      {
+        text: 'User Space Interface',
+        items: [
+          { text: 'The Syscall', link: '/user/syscall' },
+          { text: 'Learn From Libbpf', link: '/user/libbpf' },
+        ]
+      },
     ],
   },
 }
