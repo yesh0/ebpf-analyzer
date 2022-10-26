@@ -2,6 +2,8 @@ export default {
   title: 'eBPF Hitchhiking',
   description: 'Absolutely not a guide to the galaxy.',
   base: '/ebpf-analyzer/',
+  lang: 'en',
+  lastUpdated: true,
   themeConfig: {
     editLink: {
       pattern: 'https://github.com/yesh0/ebpf-analyzer/blob/docs/docs/:path',
@@ -11,6 +13,10 @@ export default {
     socialLinks: [
       { icon: 'github', link: 'https://github.com/yesh0/ebpf-analyzer/tree/docs' },
     ],
+    footer: {
+      message: 'Released under a <a href="https://creativecommons.org/licenses/by-sa/4.0/">Creative Commons Attribution-ShareAlike 4.0 International License</a>',
+      copyright: '<a rel="license" style="display: inline-block" href="https://creativecommons.org/licenses/by-sa/4.0/"><img alt="Creative Commons License" style="height: 2em" src="https://mirrors.creativecommons.org/presskit/buttons/88x31/svg/by-sa.svg" /></a>',
+    },
     sidebar: [
       {
         text: 'Introduction',
