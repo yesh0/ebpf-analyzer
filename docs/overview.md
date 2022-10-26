@@ -32,3 +32,9 @@ The following description may differ from the actual implememtation in Linux or 
    - Things (jump destinations, for example) are relocated.
    - The programs are submitted to the kernel with the `BPF(2)` syscall.
 
+### Variations
+
+Yes, eBPF is ever evolving.
+It does seem that kernel developers are moving relocations from libbpf into the kernel
+so that the compiled eBPF instructions stay immutable.
+See [some notes on the syscall interface](./user/syscall.md#bpf-prog-load).

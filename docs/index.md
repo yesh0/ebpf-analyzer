@@ -4,7 +4,7 @@ layout: home
 hero:
   name: eBPF Hitchhiking
   text: Don't Panic
-  tagline: An attempt to help with understanding eBPF and implementing your own
+  tagline: An attempt to help with understanding Linux eBPF implementation and rolling your own
   actions:
     - theme: brand
       text: Get Started

@@ -38,7 +38,7 @@ struct { /* anonymous struct used by BPF_PROG_LOAD command */
     __aligned_u64	func_info;	/* func info */ // [!code hl]
     __u32		func_info_cnt;	/* number of bpf_func_info records */
     __u32		line_info_rec_size;	/* userspace bpf_line_info size */
-    __aligned_u64	line_info;	/* line info */
+    __aligned_u64	line_info;	/* line info */ // [!code hl]
     __u32		line_info_cnt;	/* number of bpf_line_info records */
     __u32		attach_btf_id;	/* in-kernel BTF type id to attach to */
     union {
@@ -53,3 +53,32 @@ struct { /* anonymous struct used by BPF_PROG_LOAD command */
     __u32		core_relo_rec_size; /* sizeof(struct bpf_core_relo) */
 };
 ```
+
+I am not to explain all this mess. But anyway,
+- `prog_type`: [`include/uapi/linux/bpf.h`](https://github.com/torvalds/linux/blob/4dc12f37a8e98e1dca5521c14625c869537b50b6/include/uapi/linux/bpf.h#L940-L981):
+  Unfortunately you can hardly find any documentation on what each type means.
+  You may find some introduction from the Internet, like:
+  - [uhh, the kernel documentation?](https://docs.kernel.org/bpf/programs.html)
+  - [or this article at LWN](https://lwn.net/Articles/740157/)
+  - [or this tour from Oracle Linux Blog](https://blogs.oracle.com/linux/post/bpf-a-tour-of-program-types)
+
+  But to stay up-to-date, you will need to `git blame` through the code and find the culprit commit (no offence).
+
+- `insns`: The eBPF instructions. The most comprehensible part of this struct.
+
+- `prog_flags`: It is some random bit flags……
+  You may find the possible flags and documentation at [`include/uapi/linux/bpf.h`](https://github.com/torvalds/linux/blob/4dc12f37a8e98e1dca5521c14625c869537b50b6/include/uapi/linux/bpf.h#L1048-L1154).
+- `expected_attach_type`: [`include/uapi/linux/bpf.h`](https://github.com/torvalds/linux/blob/4dc12f37a8e98e1dca5521c14625c869537b50b6/include/uapi/linux/bpf.h#L983-L1029)
+  (sigh)
+- `prog_btf_fd`: A file descriptor from with `BPF_BTF_LOAD`.
+- `func_info`, `line_info`: BTF info. See [BPF Type Format (BTF)](https://docs.kernel.org/bpf/btf.html#bpf-prog-load) for more info.
+- `attach_prog_fd`: The file descriptor for _another eBPF program_. See [this commit](https://github.com/torvalds/linux/commit/5b92a28aae4dd0f88778d540ecfdcdaec5a41723).
+- `attach_btf_obj_fd`: Please refer to [this commit](https://github.com/torvalds/linux/commit/290248a5b7d829871b3ea3c62578613a580a1744).
+- `fd_array`: Uhh, relocation data. Please refer to [this commit](https://github.com/torvalds/linux/commit/387544bfa291a22383d60b40f887360e2b931ec6).
+- `core_relos`: Uhh, relocation data.
+  Please refer to [this commit](https://github.com/torvalds/linux/commit/fbd94c7afcf99c9f3b1ba1168657ecc428eb2c8d)
+  and [these comments](https://github.com/torvalds/linux/blob/4dc12f37a8e98e1dca5521c14625c869537b50b6/include/uapi/linux/bpf.h#L6930-L6983).
+
+  By the way, while `core_relo_cnt` goes before `fd_array`, it has nothing to do with that. All is about padding.
+
+  (And I just don't understand why a note got placed in the commit message instead of comments.)
