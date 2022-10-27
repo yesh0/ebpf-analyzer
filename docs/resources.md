@@ -14,10 +14,18 @@ Don't panic. Linux source code is neat.
 - The kernel JIT compilers:
   - [Header for riscv64](https://github.com/torvalds/linux/blob/4dc12f37a8e98e1dca5521c14625c869537b50b6/arch/riscv/net/bpf_jit.h)
   - [Code for riscv64](https://github.com/torvalds/linux/blob/4dc12f37a8e98e1dca5521c14625c869537b50b6/arch/riscv/net/bpf_jit_comp64.c)
+
   The eBPF VM is actually designed to be RISC, so JIT compilers for RISC architectures can be more understandable (provided that you are willing to learn about it).
 - The syscall interface:
   - [`kernel/bpf/syscall.c`](https://github.com/torvalds/linux/blob/4dc12f37a8e98e1dca5521c14625c869537b50b6/kernel/bpf/syscall.c)
   - [`include/uapi/linux/bpf.h`](https://github.com/torvalds/linux/blob/4dc12f37a8e98e1dca5521c14625c869537b50b6/include/uapi/linux/bpf.h)
+
+::: tip
+When reading lengthy code, an IDE really makes your life better.
+(I mainly use one to collapse the code I have comprehended.)
+
+Personally I find `github.dev` satisfatory. For any GitHub url, replacing `github.com` with `github.dev` does the job.
+:::
   
 ## Kernel documentation
 
