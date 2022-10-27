@@ -16,6 +16,13 @@ function sidebarGuide() {
         { text: 'Learn From Libbpf', link: '/user/libbpf' },
       ]
     },
+    {
+      text: 'Kernel Implementation',
+      items: [
+        { text: 'Syscall Entrance', link: '/impl/syscall' },
+        { text: 'eBPF Verifier', link: '/impl/verifier' },
+      ],
+    },
   ]
 }
 

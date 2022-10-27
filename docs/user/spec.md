@@ -87,3 +87,7 @@ In short, `BPF_CALL` has multiple semantics, differentiated by the `src_deg` fie
 If you are implementing your own eBPF runtime, you don't need to follow the internals of Linux.
 All the above explanations just aim to help with reading Linux source code and understanding eBPF semantics.
 :::
+
+### Relocation
+
+(WIP) <!-- TODO: Try to explain this mess -->
