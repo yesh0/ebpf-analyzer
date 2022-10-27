@@ -12,13 +12,16 @@
   "author": "Yesh",
   "license": "CC-BY-SA-4.0",
   "devDependencies": {
+    "markdown-it": "^13.0.1",
     "vitepress": "1.0.0-alpha.25",
+    "vitepress-plugin-search": "1.0.4-alpha.11",
     "vue": "^3.2.41"
   },
   "pnpm": {
     "peerDependencyRules": {
       "ignoreMissing": [
-        "@algolia/client-search"
+        "@algolia/client-search",
+        "vite"
       ]
     }
   }
