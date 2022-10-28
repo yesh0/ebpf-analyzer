@@ -183,3 +183,45 @@ you can count on it to just lead you to the other _10k lines_ of code,
 which is rather beyond my reach (yet).
 
 <!-- TODO: Do the impossible -->
+
+### `check_alu_op`
+
+This functions checks ALU operations (32-bit & 64-bit).
+
+1. Reserved fields must be zeroed.
+2. Some pointer operations are prohibited:
+   - All pointer arithmetic
+     - Pointer subtraction is not strictly checked (i.e., the result is marked as unknown)
+       and is only allowed if `allow_ptr_leaks`.
+   - Partial copy of a pointer
+3. `R10` is not writable while uninitialized registers are not readable.
+   (See [`check_reg_arg`](https://github.com/torvalds/linux/blob/23758867219c8d84c8363316e6dd2f9fd7ae3049/kernel/bpf/verifier.c#L2449).)
+4. Division by zero or undefined shifts (e.g., `u64 << 65`) are prohibited.
+
+Side effects:
+1. Register status update: `mark_reg_scratched`, `mark_reg_read`, `mark_reg_unknown`.
+2. Instance mark: `mark_insn_zext`.
+3. Register scalar value update: `adjust_reg_min_max_vals`, which calls `adjust_scalar_min_max_vals`.
+4. Register pointer value update: `adjust_ptr_min_max_vals`.
+
+| `src` \ `dst` | Pointer                      | Scalar                       |
+|---------------|------------------------------|------------------------------|
+| Pointer       | Forbidden unless subtracting | `adjust_ptr_min_max_vals`    |
+| Scalar        | `adjust_ptr_min_max_vals`    | `adjust_scalar_min_max_vals` |
+
+#### `adjust_*_min_max_vals`
+
+##### Precise value tracking
+
+Precise value tracking was introduced in this comment:
+[bpf: precise scalar_value tracking](https://github.com/torvalds/linux/commit/b5dc0163d8fd78e64a7e21f309cf932fda34353e).
+
+You should read through the commit message to grasp the gist and what each function does.
+
+Also, I am quoting from [a comment in a LWN article](https://lwn.net/Articles/795367/):
+it seems that the verifier always keeps the precise values,
+and marking a value as being "precise" just prevents it getting pruned? I am not sure.
+
+##### `adjust_scalar_min_max_vals`
+
+(WIP) <!-- TODO: Uhh... -->

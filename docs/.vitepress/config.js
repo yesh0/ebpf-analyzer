@@ -40,6 +40,7 @@ export default {
   lang: 'en',
   lastUpdated: true,
   themeConfig: {
+    outline: 'deep',
     editLink: {
       pattern: 'https://github.com/yesh0/ebpf-analyzer/blob/docs/docs/:path',
       text: 'Page source',
