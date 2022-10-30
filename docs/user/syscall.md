@@ -62,7 +62,7 @@ I am not to explain all this mess. But anyway,
   - [or this article at LWN](https://lwn.net/Articles/740157/)
   - [or this tour from Oracle Linux Blog](https://blogs.oracle.com/linux/post/bpf-a-tour-of-program-types)
 
-  But to stay up-to-date, you will need to `git blame` through the code and find the culprit commit (no offence).
+  But to stay up-to-date, you will need to `git blame` through the code and find the culprit commit (no offense).
 
 - `insns`: The eBPF instructions. The most comprehensible part of this struct.
 

@@ -2,7 +2,7 @@
 
 ## Source code
 
-eBPF is always evolving and obviously the kernel documentation is not following up. To get a better understanding of eBPF, you should always check out the kernel source code.
+eBPF is always evolving, and obviously the kernel documentation is not following up. To get a better understanding of eBPF, you should always check out the kernel source code.
 
 Don't panic. Linux source code is neat.
 - The kernel interpreter:
@@ -24,12 +24,12 @@ Don't panic. Linux source code is neat.
 When reading lengthy code, an IDE really makes your life better.
 (I mainly use one to collapse the code I have comprehended.)
 
-Personally I find `github.dev` satisfatory. For any GitHub url, replacing `github.com` with `github.dev` does the job.
+Personally I find `github.dev` satisfactory. For any GitHub URL, replacing `github.com` with `github.dev` does the job.
 :::
   
 ## Kernel documentation
 
-Despite of being a little bit outdated, the kernel documentation documents the gist of some decisions and can give you a vague impression of how things work.
+Despite being a little bit outdated, the kernel documentation documents the gist of some decisions and can give you a vague impression of how things work.
 - [The instruction set "specification"](https://docs.kernel.org/bpf/instruction-set.html) is too incomplete to be a spec but can be a good starting point.
 - [The verifier documentation](https://docs.kernel.org/bpf/verifier.html) provides an overview of the verifier implementation.
   - The verifier supports some bounded loops now.

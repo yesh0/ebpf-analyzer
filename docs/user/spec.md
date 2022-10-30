@@ -1,6 +1,6 @@
 # Instruction Set Specification
 
-The ["eBPF Instruction Set Specification, v1.0"](https://docs.kernel.org/bpf/instruction-set.html) is outdate and incomplete.
+The ["eBPF Instruction Set Specification, v1.0"](https://docs.kernel.org/bpf/instruction-set.html) is outdated and incomplete.
 Although eBPF is not strictly versioned, it does seem that it is far beyond "v1.0".
 
 This page aims to be a "diff" between that spec and current kernel implementation.
@@ -9,7 +9,8 @@ This page aims to be a "diff" between that spec and current kernel implementatio
 
 - The stack / frame: In terms of eBPF, a stack pointer is just a frame pointer.
   Each eBPF function call has its own 512-byte stack.
-- `R10`: This registers points to the base of the stack, that is,the very end of the stack range (`R10[-512 : 0]`).
+- `R10`: This registers points to the base of the stack,
+  that is, the very end of the stack range (`R10[-512 : 0]`).
 
 ## Instruction Encoding
 

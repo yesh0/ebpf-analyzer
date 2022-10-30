@@ -113,7 +113,7 @@ This function does the following:
    (i.e., that it does not jump from one subprog to another).
 2. Ensures that one subprog does not "fall through" to another
    by ensuring that it ends with a `BPF_EXIT` or a proper jump.
-3. Checks whether a subprog contains certains instructions and sets some flags accordingly:
+3. Checks whether a subprog contains certain instructions and sets some flags accordingly:
    - tail calls,
    - `BPF_IND` or `BPF_ABS` instructions.
 
@@ -122,7 +122,7 @@ This function does the following:
 Checks BTF info.
 
 BTF info is optional for most eBPF programs,
-unless they contains tail calls or `BPF_ABS / BPF_IND` instructions.
+unless they contain tail calls or `BPF_ABS / BPF_IND` instructions.
 
 ### `check_attach_btf_id`
 
@@ -151,7 +151,7 @@ mov         R1, 0xcafebabe // type-less
 ### `check_cfg`
 
 Checks if there are unreachable instructions.
-(No, it cannot detect those wrapped with `if (0) { ... }`.
+(No, it cannot detect those wrapped with `if (0) { ... }`.)
 
 ### `do_check_subprogs`
 

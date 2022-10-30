@@ -30,7 +30,7 @@ We will get to these concepts soon.
 
 We are not going to distinguish between JIT and AOT. But it can be fun if you think about it:
 
-- From the user's perspective, the kernel does JIT compilation, since the compilation is done after they requests to run the program.
+- From the user's perspective, the kernel does JIT compilation, since the compilation is done after they request to run the program.
 - As for eBPF implementers, it is actually AOT: compilation is done before running the code.
   - No, we are not to discuss those complex techniques used by Java or C#.
   - It might eventually evolve into a JIT implementation, but personally I think it is just too slow during warm-up and not worth the price.

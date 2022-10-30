@@ -3,7 +3,7 @@
 ## How actually an eBPF program is run
 
 ::: warning
-The following description may differ from the actual implememtation in Linux or libbpf.
+The following description may differ from the actual implementation in Linux or libbpf.
 :::
 
 ### Kernel space
@@ -12,9 +12,9 @@ The following description may differ from the actual implememtation in Linux or 
    - Program type, license, version, size...
    - The raw program, or rather, an array of eBPF instructions
    - Optionally some debug info
-2. The instructions is checked by the verifier.
-3. Things (mostly pointers to maps) are relocated.
-4. If JIT compilation is enabled, the instructions are compiled into native code.
+2. The instructions are checked by the verifier.
+3. Things (e.g., pointers to maps) are relocated.
+4. If JIT compilation is enabled, the JIT module compiles the instructions into native code.
 5. A file descriptor is allocated for the eBPF program.
 6. Upon running, either
    - the interpreter interprets the instructions,
