@@ -29,6 +29,15 @@ Personally I find `github.dev` satisfactory. For any GitHub URL, replacing `gith
   
 ## Kernel documentation
 
+::: tip
+Ongoing efforts to update relevant documentation:
+- [Update ISA documentation](https://github.com/dthaler/ebpf-docs/pull/4)
+
+  The updated ISA draft lies [here](https://github.com/dthaler/ebpf-docs/blob/update/isa/kernel.org/instruction-set.rst).
+
+- [eBPF.md: Add missing instructions and instruction variants (32-bit jumps, atomic instructions, call and lddw variants)](https://github.com/iovisor/bpf-docs/pull/26)
+:::
+
 Despite being a little bit outdated, the kernel documentation documents the gist of some decisions and can give you a vague impression of how things work.
 - [The instruction set "specification"](https://docs.kernel.org/bpf/instruction-set.html) is too incomplete to be a spec but can be a good starting point.
 - [The verifier documentation](https://docs.kernel.org/bpf/verifier.html) provides an overview of the verifier implementation.
@@ -47,3 +56,13 @@ Here is a non-exhaustive list, and you can always search for ones that suit your
 - [BPF and XDP Reference Guide - Cilium documentation](https://docs.cilium.io/en/latest/bpf/)
 - [A series of blog posts about BPF - Oracle Linux Blog](https://blogs.oracle.com/linux/post/bpf-application-development-and-libbpf)
 - [Libbpf: A Beginners Guide - ContainIQ](https://www.containiq.com/post/libbpf)
+
+## eBPF programming
+
+- [XDP Programming Hands-On Tutorial](https://github.com/xdp-project/xdp-tutorial):
+  While it focuses on XDP, it covers libbpf usages and some eBPF caveats.
+  If you want to take a glimpse into user space eBPF programming (with libbpf),
+  this is absolutely a good starting point.
+
+- [The art of writing eBPF programs: a primer.](https://sysdig.com/blog/the-art-of-writing-ebpf-programs-a-primer/):
+  An introduction to writing eBPF programs attaching to trace points.

@@ -5,6 +5,14 @@ Although eBPF is not strictly versioned, it does seem that it is far beyond "v1.
 
 This page aims to be a "diff" between that spec and current kernel implementation.
 
+## Standardization efforts
+
+[This blog entry](https://pchaigno.github.io/bpf/2021/10/20/ebpf-instruction-sets.html) states
+that BPF ISA version is now `v3` since kernel version v5.1.
+
+It seems [people are working to update the kernel documentation](https://github.com/dthaler/ebpf-docs/pull/4),
+and [the updated version](https://github.com/dthaler/ebpf-docs/blob/update/isa/kernel.org/instruction-set.rst) covers most of the content on this page.
+
 ## Architecture
 
 - The stack / frame: In terms of eBPF, a stack pointer is just a frame pointer.
