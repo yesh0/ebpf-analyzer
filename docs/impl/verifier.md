@@ -10,6 +10,8 @@ You can get an impression of the internals of a verifier from:
 - [The kernel documentation](https://docs.kernel.org/bpf/verifier.html)
 - [and this LWN post](https://lwn.net/Articles/794934/).
 
+Note that [eBPF is not Turing-complete](./undecidability.md).
+
 ## `bpf_check`
 
 [`bpf_check`](https://github.com/torvalds/linux/blob/4dc12f37a8e98e1dca5521c14625c869537b50b6/kernel/bpf/verifier.c#L15159)

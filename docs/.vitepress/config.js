@@ -21,6 +21,7 @@ function sidebarGuide() {
       items: [
         { text: 'Syscall Entrance', link: '/impl/syscall' },
         { text: 'eBPF Verifier', link: '/impl/verifier' },
+        { text: 'Undecidability', link: '/impl/undecidability' },
       ],
     },
   ]
