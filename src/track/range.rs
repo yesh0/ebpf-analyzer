@@ -44,6 +44,14 @@ impl<Int: RangeItem> RangePair<Int> {
     pub fn mark_as_known(&mut self, value: Int) {
         *self = Self::exact(value);
     }
+
+    pub fn is_valid(&self) -> bool {
+        self.min <= self.max
+    }
+
+    pub fn is_constant(&self) -> bool {
+        self.min == self.max
+    }
 }
 
 impl <Int: RangeItem> AddAssign<&Self> for RangePair<Int> {
