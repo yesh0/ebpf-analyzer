@@ -20,8 +20,14 @@ function sidebarGuide() {
       text: 'Kernel Implementation',
       items: [
         { text: 'Syscall Entrance', link: '/impl/syscall' },
-        { text: 'eBPF Verifier', link: '/impl/verifier' },
-        { text: 'Undecidability', link: '/impl/undecidability' },
+      ],
+    },
+    {
+      text: 'Verifier Implementation',
+      items: [
+        { text: 'Structure', link: '/verifier/verifier' },
+        { text: 'ALU Operation Verification', link: '/verifier/arithmetic' },
+        { text: 'Undecidability', link: '/verifier/undecidability' },
       ],
     },
   ]
