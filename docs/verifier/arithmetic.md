@@ -30,8 +30,7 @@ Side effects:
 | Pointer       | Forbidden unless subtracting | `adjust_ptr_min_max_vals`    |
 | Scalar        | `adjust_ptr_min_max_vals`    | `adjust_scalar_min_max_vals` |
 
-### Precise value tracking
-
+::: info Precise value tracking
 Precise value tracking was introduced in this comment:
 [bpf: precise scalar_value tracking](https://github.com/torvalds/linux/commit/b5dc0163d8fd78e64a7e21f309cf932fda34353e).
 
@@ -39,7 +38,9 @@ You should read through the commit message to grasp the gist and what each funct
 
 Also, I am quoting from [a comment in a LWN article](https://lwn.net/Articles/795367/):
 it seems that the verifier always keeps the precise values,
-and marking a value as being "precise" just prevents it getting pruned? I am not sure.
+and marking a value as being "precise" just prevents it getting pruned.
+If it is so, this part mostly has more to do with branch pruning than actual ALU operations.
+:::
 
 ### `adjust_scalar_min_max_vals`
 
@@ -83,11 +84,19 @@ struct bpf_reg_state {
 };
 ```
 
+#### Implementation details
+
 If ever you would like to peek into the implementation details,
 here are some notes:
 
+0. Maintained fields:
+   - [`struct tnum`](https://github.com/torvalds/linux/blob/4dc12f37a8e98e1dca5521c14625c869537b50b6/kernel/bpf/tnum.c):
+     tracks the individual bits in the scalar,
+     consisting of a mask (masked bits are unknown) and a value (recording the unmasked known bits).
+   - minimum/maximum possible values for `u64/i64/u32/i32` respectively. 
+
 1. Before dispatching, `adjust_scalar_min_max_vals` tries to:
-   - Validate the register state (in case of `min_value > max_value`);
+   - Validate the register state (e.g., `min_value <= max_value`);
    - Ensure `src_known` for some opcodes (e.g., shifts), or set the register as unknown;
    - Sanitize something that is probably part of branch tracking or pruning...
 
@@ -105,10 +114,37 @@ here are some notes:
    - Shifts assign to `dst_reg->var_off` inside `scalar(32)_min_max_...`.
 
 3. The actual logic inside `scalar(32)_min_max_...` functions:
+   - Operations other than `and`, `or` and `mul` require `src_known`,
+     although some of them could handle unknown `src_reg` in principle.
    - Bit-wise operations (`and`, `or`, `xor`) are quite straightforward.
    - For `add`, `sub` and `mul`, uh, you might want to check out this essay:
      [\[arXiv:2105.05398\] Sound, Precise, and Fast Abstract Interpretation with Tristate Numbers](https://arxiv.org/abs/2105.05398).
    - For shifts, things are quite easy
      if you bear in mind that they require a **constant `src_reg`**.
+
+4. `adjust_scalar_min_max_vals` calls `reg_bounds_sync` after updating the fields.
+   It is quite crucial since it syncs the bit map (`var_off`) with sign bit info.
+
+   In functions for `and`, `or`, `xor`, you will find that they assume `var_off` is in sync.
+   The following code assumes that a positive `smin_value` implies a synced `var_off` with its sign bit cleared.
+
+   ```c
+   // https://github.com/torvalds/linux/blob/4dc12f37a8e98e1dca5521c14625c869537b50b6/kernel/bpf/verifier.c#L8622-L8655
+   static void scalar_min_max_and(...) {
+     // ...
+     dst_reg->umin_value = dst_reg->var_off.value; // [!code hl]
+     dst_reg->umax_value = min(dst_reg->umax_value, umax_val); // [!code hl]
+     if (dst_reg->smin_value < 0 || smin_val < 0) { // [!code hl]
+       // ...
+     } else {
+       /* ANDing two positives gives a positive, so safe to
+        * cast result into s64.
+        */
+       dst_reg->smin_value = dst_reg->umin_value; // [!code hl]
+       dst_reg->smax_value = dst_reg->umax_value; // [!code hl]
+     }
+     // ...
+   }
+   ```
 
 (WIP) <!-- TODO: Uhh... -->
