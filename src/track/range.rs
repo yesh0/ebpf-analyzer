@@ -1,8 +1,8 @@
-use core::ops::{AddAssign, SubAssign, MulAssign};
+use core::{ops::{AddAssign, MulAssign, SubAssign}, fmt::{Debug, LowerHex}};
 
 use num_traits::PrimInt;
 
-pub trait RangeItem: PrimInt {
+pub trait RangeItem: PrimInt + LowerHex {
     type Unsigned: PrimInt;
 }
 impl RangeItem for u32 {
@@ -28,9 +28,14 @@ pub struct RangePair<Int: RangeItem> {
 impl<Int: RangeItem> RangePair<Int> {
     /// Returns a range that contains exactly the `value`
     pub fn exact(value: Int) -> RangePair<Int> {
+        Self::new(value, value)
+    }
+
+    /// Creates a range
+    pub fn new(start: Int, end: Int) -> RangePair<Int> {
         Self {
-            min: value,
-            max: value,
+            min: start,
+            max: end,
         }
     }
 
@@ -54,7 +59,7 @@ impl<Int: RangeItem> RangePair<Int> {
     }
 }
 
-impl <Int: RangeItem> AddAssign<&Self> for RangePair<Int> {
+impl<Int: RangeItem> AddAssign<&Self> for RangePair<Int> {
     /// Sets the current range to a new range such that
     /// for any value `a` in the previous range and another value `b` in the `other` range,
     /// `a + b` always lies in the new range.
@@ -70,13 +75,13 @@ impl <Int: RangeItem> AddAssign<&Self> for RangePair<Int> {
     }
 }
 
-impl <Int: RangeItem> SubAssign<&Self> for RangePair<Int> {
+impl<Int: RangeItem> SubAssign<&Self> for RangePair<Int> {
     /// Sets the current range to a new range such that
     /// for any value `a` in the previous range and another value `b` in the `other` range,
     /// `a - b` always lies in the new range.
     fn sub_assign(&mut self, other: &Self) {
-        if let Some(new_min) = self.min.checked_sub(&other.min) {
-            if let Some(new_max) = self.max.checked_sub(&other.max) {
+        if let Some(new_min) = self.min.checked_sub(&other.max) {
+            if let Some(new_max) = self.max.checked_sub(&other.min) {
                 self.min = new_min;
                 self.max = new_max;
                 return;
@@ -86,7 +91,7 @@ impl <Int: RangeItem> SubAssign<&Self> for RangePair<Int> {
     }
 }
 
-impl <Int: RangeItem> MulAssign<&Self> for RangePair<Int> {
+impl<Int: RangeItem> MulAssign<&Self> for RangePair<Int> {
     /// Sets the current range to a new range such that
     /// for any value `a` in the previous range and another value `b` in the `other` range,
     /// `a * b` always lies in the new range.
@@ -112,13 +117,34 @@ impl<Int: RangeItem> RangePair<Int> {
     }
 }
 
+impl<Int: RangeItem> Debug for RangePair<Int> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        if Int::min_value() == Int::zero() {
+            // Unsigned
+            f.write_fmt(format_args!("0x{:x}..=0x{:x}", &self.min, &self.max))
+        } else {
+            if self.min < Int::zero() {
+                f.write_fmt(format_args!("-0x{:x}", Int::zero() - self.min))?;
+            } else {
+                f.write_fmt(format_args!("0x{:x}", self.min))?;
+            }
+            f.write_str("..=")?;
+            if self.max < Int::zero() {
+                f.write_fmt(format_args!("-0x{:x}", Int::zero() - self.max))
+            } else {
+                f.write_fmt(format_args!("0x{:x}", self.max))
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 use rand::{thread_rng, Rng};
 
 #[test]
 pub fn range_test() {
     let mut rng = thread_rng();
-    for _ in 1..1000000 {
+    for _ in 0..1000000 {
         let i: u32 = rng.gen();
         let j: u32 = rng.gen();
 
@@ -157,4 +183,61 @@ pub fn range_test() {
             assert!(i_range.max == u32::MAX);
         }
     }
+}
+
+#[cfg(test)]
+fn test_varied(
+    ops: &[(
+        fn(&mut RangePair<i32>, y: &RangePair<i32>) -> (),
+        fn(i32, i32) -> i32,
+    )],
+) {
+    use alloc::vec::Vec;
+
+    let range_gen = || {
+        let mut rng = thread_rng();
+        let (i, j) = {
+            let i: i32 = rng.gen();
+            let j: i32 = rng.gen();
+            if i > j {
+                (j, i)
+            } else {
+                (i, j)
+            }
+        };
+        RangePair::new(i, j)
+    };
+
+    for _ in 0..10000 {
+        let r1 = range_gen();
+        let r2 = range_gen();
+
+        let results: Vec<RangePair<i32>> = ops
+            .iter()
+            .map(|(range_op, _)| {
+                let mut result = r1.clone();
+                range_op(&mut result, &r2);
+                result
+            })
+            .collect();
+        for _ in 0..1000 {
+            let mut rng = thread_rng();
+            let a = rng.gen_range(r1.min..=r1.max);
+            let b = rng.gen_range(r2.min..=r2.max);
+            for i in 0..ops.len() {
+                let result = results[i];
+                let value_op = ops[i].1;
+                assert!(result.contains(value_op(a, b)), "{}: ({:?} op {:?}) = {:?}", i, r1, r2, result);
+            }
+        }
+    }
+}
+
+#[test]
+pub fn test_varied_operants() {
+    test_varied(&[
+        (|x, y| x.add_assign(y), |x, y| x.wrapping_add(y)),
+        (|x, y| x.sub_assign(y), |x, y| x.wrapping_sub(y)),
+        (|x, y| x.mul_assign(y), |x, y| x.wrapping_mul(y)),
+    ]);
 }
