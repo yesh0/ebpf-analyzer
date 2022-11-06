@@ -1,4 +1,4 @@
-use core::ops::{Add, Sub, Mul, Shl, Shr, BitAnd, BitOr, BitXor};
+use core::{ops::{Add, Sub, Mul, Shl, Shr, BitAnd, BitOr, BitXor}, fmt::Debug};
 
 use num_traits::{Bounded, Signed, AsPrimitive};
 
@@ -111,6 +111,18 @@ impl NumBits {
     pub fn unknown() -> NumBits {
         Self { mask: u64::MAX, value: 0 }
     }
+
+    pub fn range(min: u64, max: u64) -> NumBits {
+        let chi = min ^ max;
+        let bits_in_sync = chi.leading_zeros();
+    
+        if bits_in_sync == 0 {
+            NumBits::unknown()
+        } else {
+            let mask = (1u64 << (64 - bits_in_sync)) - 1;
+            NumBits::pruned(mask, min)
+        }
+    }
 }
 
 impl Shl<u8> for NumBits {
@@ -205,6 +217,12 @@ impl Mul<NumBits> for NumBits {
         }
 
         Self::exact(acc_v).add(acc_m)
+    }
+}
+
+impl Debug for NumBits {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_fmt(format_args!("(m:0x{:x},v:0x{:x})", self.mask, self.value))
     }
 }
 

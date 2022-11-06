@@ -96,7 +96,7 @@ impl<Int: RangeItem> MulAssign<&Self> for RangePair<Int> {
     /// for any value `a` in the previous range and another value `b` in the `other` range,
     /// `a * b` always lies in the new range.
     fn mul_assign(&mut self, other: &Self) {
-        if self.min < Int::min_value() || other.min < Int::min_value() {
+        if self.min < Int::zero() || other.min < Int::zero() {
             // Dealing with negative number multiplication is hell
             self.mark_as_unknown();
             return;
@@ -104,7 +104,7 @@ impl<Int: RangeItem> MulAssign<&Self> for RangePair<Int> {
 
         if let Some(new_max) = self.max.checked_mul(&other.max) {
             self.max = new_max;
-            self.min = self.min * other.max;
+            self.min = self.min * other.min;
             return;
         }
         self.mark_as_unknown();
@@ -124,13 +124,13 @@ impl<Int: RangeItem> Debug for RangePair<Int> {
             f.write_fmt(format_args!("0x{:x}..=0x{:x}", &self.min, &self.max))
         } else {
             if self.min < Int::zero() {
-                f.write_fmt(format_args!("-0x{:x}", Int::zero() - self.min))?;
+                f.write_fmt(format_args!("-0x{:x}", self.min.to_i64().unwrap().unsigned_abs()))?;
             } else {
                 f.write_fmt(format_args!("0x{:x}", self.min))?;
             }
             f.write_str("..=")?;
             if self.max < Int::zero() {
-                f.write_fmt(format_args!("-0x{:x}", Int::zero() - self.max))
+                f.write_fmt(format_args!("-0x{:x}", self.max.to_i64().unwrap().unsigned_abs()))
             } else {
                 f.write_fmt(format_args!("0x{:x}", self.max))
             }
