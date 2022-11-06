@@ -1,5 +1,7 @@
 use core::ops::{AddAssign, BitAndAssign, BitOrAssign, BitXorAssign, MulAssign, SubAssign};
 
+use num_traits::{AsPrimitive, PrimInt};
+
 use super::{range::RangePair, tnum::NumBits};
 
 /// A tracked scalar, recording known bits and possible values
@@ -53,8 +55,20 @@ macro_rules! bit_update_irange {
             $self.$irange.mark_as_unknown();
         } else {
             // Zeroed sign bit ensured
-            debug_assert!($self.$urange.min as $itype >= 0, "0x{:x}: 0x{:x}, 0x{:x}", $self.$urange.min, $self.$irange.min, $rhs.$irange.min);
-            debug_assert!($self.$urange.max as $itype >= 0, "0x{:x}: 0x{:x}, 0x{:x}", $self.$urange.max, $self.$irange.min, $rhs.$irange.min);
+            debug_assert!(
+                $self.$urange.min as $itype >= 0,
+                "0x{:x}: 0x{:x}, 0x{:x}",
+                $self.$urange.min,
+                $self.$irange.min,
+                $rhs.$irange.min
+            );
+            debug_assert!(
+                $self.$urange.max as $itype >= 0,
+                "0x{:x}: 0x{:x}, 0x{:x}",
+                $self.$urange.max,
+                $self.$irange.min,
+                $rhs.$irange.min
+            );
             $self.$irange.min = $self.$urange.min as $itype;
             $self.$irange.max = $self.$urange.max as $itype;
         }
@@ -517,13 +531,41 @@ impl BitXorAssign<&Self> for Scalar {
 }
 
 impl Scalar {
-    fn constant64(value: u64) -> Self {
+    pub fn constant64(value: u64) -> Self {
         Scalar {
             bits: NumBits::exact(value),
             irange: RangePair::exact(value as i64),
             irange32: RangePair::exact(value as i32),
             urange: RangePair::exact(value),
             urange32: RangePair::exact(value as u32),
+        }
+    }
+
+    pub fn contains<
+        Int: PrimInt + AsPrimitive<i64> + AsPrimitive<u64> + AsPrimitive<i32> + AsPrimitive<u32>,
+    >(
+        &self,
+        value: Int,
+    ) -> bool {
+        let width = Int::zero().count_zeros();
+        if width == 32 {
+            self.bits.lower_half().contains(AsPrimitive::<u32>::as_(value) as u64)
+                && if Int::min_value() == Int::zero() {
+                    // u32
+                    self.urange32.contains(value.as_())
+                } else {
+                    // i32
+                    self.irange32.contains(value.as_())
+                }
+        } else {
+            self.bits.contains(value.as_())
+                && (if Int::min_value() == Int::zero() {
+                    // u64
+                    self.urange.contains(value.as_())
+                } else {
+                    // i64
+                    self.irange.contains(value.as_())
+                })
         }
     }
 }
@@ -694,6 +736,7 @@ fn assert_contains(s: &Scalar, b: &Scalar, value: i32, op: i32, prev: Scalar) {
         s.bits,
         value
     );
+    assert!(s.contains(value));
 }
 
 #[test]
