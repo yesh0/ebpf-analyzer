@@ -45,7 +45,7 @@ macro_rules! impl_shift_assign {
 impl_shift_assign!(32, urange32);
 impl_shift_assign!(64, urange);
 
-/// Updates the irange / irange32 field for bit operations
+/// Updates the irange / irange32 field for bit operations (`and`, `or` and `xor`)
 macro_rules! bit_update_irange {
     ($self:ident, $rhs:ident, $irange:ident, $urange:ident, $itype:ident) => {
         if $self.$irange.min < 0 || $rhs.$irange.min < 0 {
@@ -53,6 +53,8 @@ macro_rules! bit_update_irange {
             $self.$irange.mark_as_unknown();
         } else {
             // Zeroed sign bit ensured
+            debug_assert!($self.$urange.min as $itype >= 0, "0x{:x}: 0x{:x}, 0x{:x}", $self.$urange.min, $self.$irange.min, $rhs.$irange.min);
+            debug_assert!($self.$urange.max as $itype >= 0, "0x{:x}: 0x{:x}, 0x{:x}", $self.$urange.max, $self.$irange.min, $rhs.$irange.min);
             $self.$irange.min = $self.$urange.min as $itype;
             $self.$irange.max = $self.$urange.max as $itype;
         }
@@ -154,18 +156,18 @@ impl Scalar {
                     let max = self.$urange.max.min(self.$irange.max as $utype);
                     self.$urange = RangePair::new(min, max);
                     self.$irange = RangePair::new(min as $itype, max as $itype);
-                    return;
-                }
-                if self.$urange.max as $itype >= 0 {
-                    // All positive
-                    self.$urange.max = self.$urange.max.min(self.$irange.max as $utype);
-                    self.$irange =
-                        RangePair::new(self.$urange.min as $itype, self.$urange.max as $itype);
-                } else if (self.$urange.min as $itype) < 0 {
-                    // All negative
-                    self.$urange.min = self.$urange.min.max(self.$irange.min as $utype);
-                    self.$irange =
-                        RangePair::new(self.$urange.min as $itype, self.$urange.max as $itype);
+                } else {
+                    if self.$urange.max as $itype >= 0 {
+                        // All positive
+                        self.$urange.max = self.$urange.max.min(self.$irange.max as $utype);
+                        self.$irange =
+                            RangePair::new(self.$urange.min as $itype, self.$urange.max as $itype);
+                    } else if (self.$urange.min as $itype) < 0 {
+                        // All negative
+                        self.$urange.min = self.$urange.min.max(self.$irange.min as $utype);
+                        self.$irange =
+                            RangePair::new(self.$urange.min as $itype, self.$urange.max as $itype);
+                    }
                 }
             };
         }
@@ -351,20 +353,42 @@ impl Scalar {
         self.sync_bounds();
     }
 
-    /// Updates the irange32 field for bit operations
-    fn update_irange32(&mut self, rhs: &Self) {
-        bit_update_irange!(self, rhs, irange32, urange32, i32);
-    }
-
-    /// Updates the irange field for bit operations
-    fn update_irange(&mut self, rhs: &Self) {
-        bit_update_irange!(self, rhs, irange, urange, i64);
+    /// Updates the irange/irange32 field for bit operations
+    fn update_irange<const WIDTH: u8>(&mut self, rhs: &Self) {
+        debug_assert!(WIDTH == 32 || WIDTH == 64);
+        if WIDTH == 32 {
+            bit_update_irange!(self, rhs, irange32, urange32, i32);
+        } else {
+            bit_update_irange!(self, rhs, irange, urange, i64);
+        }
     }
 }
 
 impl Default for Scalar {
     fn default() -> Self {
         Self::constant64(0)
+    }
+}
+
+pub trait NegAssign {
+    /// `self = -self`
+    fn neg_assign(&mut self);
+}
+
+impl NegAssign for Scalar {
+    fn neg_assign(&mut self) {
+        self.mark_as_unknown();
+    }
+}
+
+pub trait SwapAssign {
+    /// `self = byte/word/dword_swap(self)`
+    fn swap_assign(&mut self, width: u8);
+}
+
+impl SwapAssign for Scalar {
+    fn swap_assign(&mut self, _: u8) {
+        self.mark_as_unknown();
     }
 }
 
@@ -418,14 +442,14 @@ impl BitAndAssign<&Self> for Scalar {
                 self.urange32.min = lower.min() as u32;
                 // (a & b) <= min(a, b)
                 self.urange32.max = self.urange32.max.min(rhs.urange32.max);
-                self.update_irange32(rhs);
+                self.update_irange::<32>(rhs);
             }
         }
         // 64-bit processing
         self.urange.min = self.bits.min();
         // (a & b) <= min(a, b)
         self.urange.max = self.urange.max.min(rhs.urange.max);
-        self.update_irange(rhs);
+        self.update_irange::<64>(rhs);
         self.sync_bounds();
     }
 }
@@ -449,14 +473,14 @@ impl BitOrAssign<&Self> for Scalar {
                 // max(a, b) <= (a | b)
                 self.urange32.min = self.urange32.min.max(rhs.urange32.min);
                 self.urange32.max = lower.max() as u32;
-                self.update_irange32(rhs);
+                self.update_irange::<32>(rhs);
             }
         }
         // 64-bit processing
         // max(a, b) <= (a | b)
         self.urange.min = self.urange.min.max(rhs.urange.min);
         self.urange.max = self.bits.max();
-        self.update_irange(rhs);
+        self.update_irange::<64>(rhs);
         self.sync_bounds();
     }
 }
@@ -480,14 +504,14 @@ impl BitXorAssign<&Self> for Scalar {
                 // max(a, b) <= (a | b)
                 self.urange32.min = lower.min() as u32;
                 self.urange32.max = lower.max() as u32;
-                self.update_irange32(rhs);
+                self.update_irange::<32>(rhs);
             }
         }
         // 64-bit processing
         // max(a, b) <= (a | b)
         self.urange.min = self.bits.min();
         self.urange.max = self.bits.max();
-        self.update_irange(rhs);
+        self.update_irange::<64>(rhs);
         self.sync_bounds();
     }
 }
