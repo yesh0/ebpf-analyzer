@@ -12,6 +12,17 @@ You can get an impression of the internals of a verifier from:
 
 Note that [eBPF is not Turing-complete](./undecidability.md).
 
+## BPF Permissions
+
+Some checks in the verifier are permission based.
+Usually the verifier allows a wider set of operations for programs from the root user,
+including pointer comparison, bounded loops, etc.
+
+The commit message of
+[bpf: Implement CAP_BPF](https://github.com/torvalds/linux/commit/2c78ee898d8f10ae6fb2fa23a3fbaec96b1b7366)
+briefs on these permissions, and you are advised to read it first.
+
+
 ## `bpf_check`
 
 [`bpf_check`](https://github.com/torvalds/linux/blob/4dc12f37a8e98e1dca5521c14625c869537b50b6/kernel/bpf/verifier.c#L15159)
@@ -189,9 +200,8 @@ which is rather beyond my reach (yet).
 Despite the daunting size of the verifier, one can split it up into several portions:
 
 - Value tracking: [ALU operation verification](./arithmetic.md)
-- Branch tracking
+- Branch tracking: [Conditional jump tracking](./conditional.md)
 - Memory access verification
 - Helper function verification
 
 <!-- TODO: Do the impossible -->
-

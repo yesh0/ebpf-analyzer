@@ -27,6 +27,7 @@ function sidebarGuide() {
       items: [
         { text: 'Structure', link: '/verifier/verifier' },
         { text: 'ALU Operation Verification', link: '/verifier/arithmetic' },
+        { text: 'JMP Operation Verification', link: '/verifier/conditional' },
         { text: 'Undecidability', link: '/verifier/undecidability' },
       ],
     },

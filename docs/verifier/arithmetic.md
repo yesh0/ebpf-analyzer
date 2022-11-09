@@ -1,6 +1,8 @@
 # Arithmetic Operation Verification
 
-[`do_check`](./verifier.md#do-check) calls `check_alu_op` to check arithmetic operations and update tracked values.
+[`do_check`](./verifier.md#do-check) calls
+[`check_alu_op`](https://github.com/torvalds/linux/blob/4dc12f37a8e98e1dca5521c14625c869537b50b6/kernel/bpf/verifier.c#L9229)
+to check arithmetic operations and update tracked values.
 
 ## `check_alu_op`
 
@@ -16,7 +18,7 @@ Some of the checks done in this function:
        and is only allowed if `allow_ptr_leaks`.
    - Partial copy of a pointer
 3. `R10` is not writable while uninitialized registers are not readable.
-   (See [`check_reg_arg`](https://github.com/torvalds/linux/blob/23758867219c8d84c8363316e6dd2f9fd7ae3049/kernel/bpf/verifier.c#L2449).)
+   (See [`check_reg_arg`](https://github.com/torvalds/linux/blob/4dc12f37a8e98e1dca5521c14625c869537b50b6/kernel/bpf/verifier.c#L2449).)
 4. Division by zero or undefined shifts (e.g., `u64 << 65`) are prohibited.
 
 Side effects:
@@ -146,5 +148,28 @@ here are some notes:
      // ...
    }
    ```
+
+### `adjust_ptr_min_max_vals`
+
+This function is quite similar to `adjust_scalar_min_max_vals`,
+utilizing very much the same fields (`s(u)min(max)_val`).
+
+- Operations allowed:
+  - 64-bit addition: `ptr += scalar` or `scalar += ptr`.
+  - 64-bit subtraction: `ptr -= scalar`.
+  - 32-bit subtraction allowed only if `allow_ptr_leaks` is enabled
+- Operations disallowed:
+  - Arithmetic on null-able pointers
+  - Adding/Subtracting non-zero values to/from a `CONST_PTR_TO_MAP`
+  - Arithmetic on `PTR_TO_PACKET_END`, `PTR_TO_SOCKET`, `PTR_TO_SOCK_COMMON`,
+    `PTR_TO_TCP_SOCK`, `PTR_TO_XDP_SOCK`...
+  - Subtraction from stack pointer
+  - Some insane operations, e.g. `ptr += u64::MAX`
+    (See [`check_reg_sane_offset`](https://github.com/torvalds/linux/blob/4dc12f37a8e98e1dca5521c14625c869537b50b6/kernel/bpf/verifier.c#L7832) for details)
+
+Some extra work:
+- Arithmetic operations clear the range of `pkt_ptr`.
+- [`sanitize_ptr_alu`](https://github.com/torvalds/linux/blob/4dc12f37a8e98e1dca5521c14625c869537b50b6/kernel/bpf/verifier.c#L7971):
+  No idea yet.
 
 (WIP) <!-- TODO: Uhh... -->
