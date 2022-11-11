@@ -5,6 +5,9 @@ use num_traits::{AsPrimitive, PrimInt};
 use super::{range::RangePair, tnum::NumBits};
 
 /// A tracked scalar, recording known bits and possible values
+///
+/// Supported operations are all 64-bit by default, and you should
+/// want to construct 32-bit ones with [lower_half()] for example.
 #[derive(Clone)]
 pub struct Scalar {
     bits: NumBits,
@@ -47,34 +50,6 @@ macro_rules! impl_shift_assign {
 impl_shift_assign!(32, urange32);
 impl_shift_assign!(64, urange);
 
-/// Updates the irange / irange32 field for bit operations (`and`, `or` and `xor`)
-macro_rules! bit_update_irange {
-    ($self:ident, $rhs:ident, $irange:ident, $urange:ident, $itype:ident) => {
-        if $self.$irange.min < 0 || $rhs.$irange.min < 0 {
-            // Just don't mess around signed numbers with bit operations
-            $self.$irange.mark_as_unknown();
-        } else {
-            // Zeroed sign bit ensured
-            debug_assert!(
-                $self.$urange.min as $itype >= 0,
-                "0x{:x}: 0x{:x}, 0x{:x}",
-                $self.$urange.min,
-                $self.$irange.min,
-                $rhs.$irange.min
-            );
-            debug_assert!(
-                $self.$urange.max as $itype >= 0,
-                "0x{:x}: 0x{:x}, 0x{:x}",
-                $self.$urange.max,
-                $self.$irange.min,
-                $rhs.$irange.min
-            );
-            $self.$irange.min = $self.$urange.min as $itype;
-            $self.$irange.max = $self.$urange.max as $itype;
-        }
-    };
-}
-
 impl Scalar {
     fn mark_as_known(&mut self, value: u64) {
         self.irange.mark_as_known(value as i64);
@@ -96,7 +71,7 @@ impl Scalar {
     }
 
     /// Returns `None` if the state invalid, or `Some(true_if_constant)`
-    fn is_constant<const WIDTH: u8>(&self) -> Option<bool> {
+    pub fn is_constant<const WIDTH: u8>(&self) -> Option<bool> {
         debug_assert!(WIDTH == 32 || WIDTH == 64);
 
         macro_rules! check_constant {
@@ -139,6 +114,17 @@ impl Scalar {
         } else {
             self.mark_as_unknown();
             false
+        }
+    }
+
+    /// Returns true if irange and irange32 are of the same range
+    pub fn is_signed_in_sync(&self) -> Option<(i32, i32)> {
+        if self.irange32.min as i64 == self.irange.min
+            && self.irange32.max as i64 == self.irange.max
+        {
+            Some((self.irange32.min, self.irange32.max))
+        } else {
+            None
         }
     }
 
@@ -367,14 +353,48 @@ impl Scalar {
         self.sync_bounds();
     }
 
-    /// Updates the irange/irange32 field for bit operations
+    /// Updates the irange/irange32 field for bit operations (`and`, `or` and `xor`)
     fn update_irange<const WIDTH: u8>(&mut self, rhs: &Self) {
         debug_assert!(WIDTH == 32 || WIDTH == 64);
+
+        macro_rules! bit_update_irange {
+            ($self:ident, $rhs:ident, $irange:ident, $urange:ident, $itype:ident) => {
+                if $self.$irange.min < 0 || $rhs.$irange.min < 0 {
+                    // Just don't mess around signed numbers with bit operations
+                    $self.$irange.mark_as_unknown();
+                } else {
+                    // Zeroed sign bit ensured
+                    debug_assert!(
+                        $self.$urange.min as $itype >= 0,
+                        "0x{:x}: 0x{:x}, 0x{:x}",
+                        $self.$urange.min,
+                        $self.$irange.min,
+                        $rhs.$irange.min
+                    );
+                    debug_assert!(
+                        $self.$urange.max as $itype >= 0,
+                        "0x{:x}: 0x{:x}, 0x{:x}",
+                        $self.$urange.max,
+                        $self.$irange.min,
+                        $rhs.$irange.min
+                    );
+                    $self.$irange.min = $self.$urange.min as $itype;
+                    $self.$irange.max = $self.$urange.max as $itype;
+                }
+            };
+        }
+
         if WIDTH == 32 {
             bit_update_irange!(self, rhs, irange32, urange32, i32);
         } else {
             bit_update_irange!(self, rhs, irange, urange, i64);
         }
+    }
+
+    pub fn unknown() -> Scalar {
+        let mut result = Scalar::constant64(0);
+        result.mark_as_unknown();
+        result
     }
 }
 
@@ -549,7 +569,9 @@ impl Scalar {
     ) -> bool {
         let width = Int::zero().count_zeros();
         if width == 32 {
-            self.bits.lower_half().contains(AsPrimitive::<u32>::as_(value) as u64)
+            self.bits
+                .lower_half()
+                .contains(AsPrimitive::<u32>::as_(value) as u64)
                 && if Int::min_value() == Int::zero() {
                     // u32
                     self.urange32.contains(value.as_())
@@ -802,4 +824,36 @@ pub fn test_random_ops() {
             assert_contains(&a, &b, result, op, prev);
         }
     }
+}
+
+#[cfg(test)]
+extern crate std;
+
+#[test]
+pub fn test() {
+    //std::println!("{}: {:?}, {:?}, {:?}, {:?}, {:?}: 0x{:x}", op, prev.bits, prev.irange, prev.urange, prev.irange32, prev.urange32, rhs);
+
+    let b = Scalar::constant64(0x964cc655da44d553);
+
+    let mut s = Scalar {
+        bits: NumBits::pruned(0xfffffffc00080000, 0),
+        irange: RangePair::new(-0x400000000, 0x80000),
+        irange32: RangePair::new(0, 0x80000),
+        urange: RangePair::new(0, 0xfffffffc00080000),
+        urange32: RangePair::new(0, 0x80000),
+    };
+
+    s -= &b;
+    s.narrow_bounds();
+    std::println!("{:?} {:?} {:?}", s.bits, s.irange, s.urange);
+
+    s.sync_sign_bounds();
+    std::println!("{:?} {:?} {:?}", s.bits, s.irange, s.urange);
+    std::println!(
+        "{:?}",
+        s.bits
+            .intersects(NumBits::range(s.urange.min, s.urange.max))
+    );
+    s.sync_bits();
+    std::println!("{:?} {:?} {:?}", s.bits, s.irange, s.urange);
 }
