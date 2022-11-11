@@ -23,7 +23,7 @@ impl PointedValue for EmptyRegion {
         Err(crate::track::TrackError::PointeeNotReadable)
     }
 
-    fn set(&mut self, _offset: &Scalar, _size: u8, _value: &TrackedValue) -> Option<TrackError> {
-        Some(crate::track::TrackError::PointeeNotWritable)
+    fn set(&mut self, _offset: &Scalar, _size: u8, _value: &TrackedValue) -> Result<(), TrackError> {
+        Err(crate::track::TrackError::PointeeNotWritable)
     }
 }

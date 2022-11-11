@@ -21,7 +21,7 @@ use super::{is_access_in_range, PointedValue};
 /// - `0` means that it is part of a scalar value
 /// - `-1` means that it is read-only
 /// - `-2` means that it is write-only
-/// 
+///
 /// Currently, it represents a struct known at compile time,
 /// and requires a `'static` slice representing its structure.
 pub struct StructRegion {
@@ -76,18 +76,14 @@ impl PointedValue for StructRegion {
         Ok(TrackedValue::Scalar(Scalar::unknown()))
     }
 
-    fn set(&mut self, offset: &Scalar, size: u8, _: &TrackedValue) -> Option<TrackError> {
-        match is_access_in_range(offset, size, self.map.len()) {
-            Ok((start, end)) => {
-                for i in start..end {
-                    if !Self::is_writable(self.map[i]) {
-                        return Some(TrackError::PointeeNotWritable);
-                    }
-                }
-                None
+    fn set(&mut self, offset: &Scalar, size: u8, _: &TrackedValue) -> Result<(), TrackError> {
+        let (start, end) = is_access_in_range(offset, size, self.map.len())?;
+        for i in start..end {
+            if !Self::is_writable(self.map[i]) {
+                return Err(TrackError::PointeeNotWritable);
             }
-            Err(err) => Some(err),
         }
+        Ok(())
     }
 }
 
@@ -105,7 +101,7 @@ pub fn test_readable_writable() {
             if readable {
                 assert!(region.get(&Scalar::constant64(0), i).is_ok());
             } else {
-                assert!(region.set(&Scalar::constant64(0), i, &v).is_none());
+                assert!(region.set(&Scalar::constant64(0), i, &v).is_ok());
             }
         }
         for (offset, size, ok) in [
@@ -120,9 +116,9 @@ pub fn test_readable_writable() {
         ] {
             if readable {
                 if ok {
-                    assert!(region.set(&Scalar::constant64(offset), size, &v).is_none());
+                    assert!(region.set(&Scalar::constant64(offset), size, &v).is_ok());
                 } else {
-                    assert!(region.set(&Scalar::constant64(offset), size, &v).is_some());
+                    assert!(region.set(&Scalar::constant64(offset), size, &v).is_err());
                 }
             } else {
                 if ok {
@@ -153,18 +149,18 @@ fn assert_is_only_ok_at_size(region: &mut StructRegion, offset: u64, size: u8, p
     if ptr {
         assert!(region
             .set(&Scalar::constant64(offset), size, &value)
-            .is_some());
+            .is_err());
     } else {
         assert!(region
             .set(&Scalar::constant64(offset), size, &value)
-            .is_none());
+            .is_ok());
     }
     assert!(region
         .set(&Scalar::constant64(offset), size + 1, &value)
-        .is_some());
+        .is_err());
     assert!(region
         .set(&Scalar::constant64(offset), size * 2, &value)
-        .is_some());
+        .is_err());
 }
 
 #[cfg(test)]
@@ -172,7 +168,7 @@ fn assert_all_err(region: &mut StructRegion, offset: u64, size: u8) {
     let value = TrackedValue::Scalar(Scalar::constant64(0));
     for i in 1..=size {
         assert!(region.get(&Scalar::constant64(offset), i).is_err());
-        assert!(region.set(&Scalar::constant64(offset), i, &value).is_some());
+        assert!(region.set(&Scalar::constant64(offset), i, &value).is_err());
     }
 }
 
@@ -181,10 +177,12 @@ fn assert_err_after(region: &mut StructRegion, offset: u64, size: u8) {
     let value = TrackedValue::Scalar(Scalar::constant64(0));
     for i in 1..=size {
         assert!(region.get(&Scalar::constant64(offset), i).is_ok());
-        assert!(region.set(&Scalar::constant64(offset), i, &value).is_none());
+        assert!(region.set(&Scalar::constant64(offset), i, &value).is_ok());
     }
     assert!(region.get(&Scalar::constant64(offset), size + 1).is_err());
-    assert!(region.set(&Scalar::constant64(offset), size + 1, &value).is_some());
+    assert!(region
+        .set(&Scalar::constant64(offset), size + 1, &value)
+        .is_err());
 }
 
 #[test]

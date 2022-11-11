@@ -76,15 +76,15 @@ impl Pointer {
         }
     }
 
-    pub fn set(&mut self, size: u8, value: &TrackedValue) -> Option<TrackError> {
+    pub fn set(&mut self, size: u8, value: &TrackedValue) -> Result<(), TrackError> {
         if self.non_null() {
             if self.is_mutable() {
                 self.pointee.borrow_mut().set(&self.offset, size, value)
             } else {
-                Some(TrackError::PointeeNotWritable)
+                Err(TrackError::PointeeNotWritable)
             }
         } else {
-            Some(TrackError::PointerNullable)
+            Err(TrackError::PointerNullable)
         }
     }
 

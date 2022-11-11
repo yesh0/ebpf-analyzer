@@ -1,12 +1,13 @@
 use super::{TrackError, scalar::Scalar, TrackedValue};
 
+pub mod stack_region;
 pub mod struct_region;
 pub mod empty_region;
 
 /// A memory region that checks memory access
 pub trait PointedValue {
     fn get(&mut self, offset: &Scalar, size: u8) -> Result<TrackedValue, TrackError>;
-    fn set(&mut self, offset: &Scalar, size: u8, value: &TrackedValue) -> Option<TrackError>;
+    fn set(&mut self, offset: &Scalar, size: u8, value: &TrackedValue) -> Result<(), TrackError>;
 }
 
 /// Checks if (offset_start, offset_end + size) is within the limit
