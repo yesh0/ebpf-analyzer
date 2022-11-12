@@ -46,14 +46,14 @@ fn validate_valid_code() {
             ParsedInstruction::None => panic!("Unrecognized"),
             ParsedInstruction::Instruction(i) => {
                 assert!(!i.is_wide(), "Wide instruction mismatched");
-                if let Some(err) = i.validate() {
+                if let Err(err) = i.validate() {
                     panic!("Invalid code[{}]: {:?}: {:?}", pc, err, i);
                 }
                 pc += 1;
             }
             ParsedInstruction::WideInstruction(i) => {
                 assert!(i.instruction.is_wide(), "Wide instruction mismatched");
-                if let Some(err) = i.instruction.validate() {
+                if let Err(err) = i.instruction.validate() {
                     panic!("Invalid code[{}]: {:?}: {:?}", pc, err, i.instruction);
                 }
                 pc += 2;

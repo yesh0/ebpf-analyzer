@@ -89,15 +89,11 @@ impl CodeBlocks {
             let (insn, pc_inc) = match Instruction::from(code, pc) {
                 ParsedInstruction::None => return Err(IllegalInstruction::IllegalInstruction),
                 ParsedInstruction::Instruction(i) => {
-                    if let Some(err) = i.validate() {
-                        return Err(err);
-                    }
+                    i.validate()?;
                     (i, 1)
                 }
                 ParsedInstruction::WideInstruction(w) => {
-                    if let Some(err) = w.instruction.validate() {
-                        return Err(err);
-                    }
+                    w.instruction.validate()?;
                     (w.instruction, 2)
                 }
             };

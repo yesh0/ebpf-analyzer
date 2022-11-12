@@ -56,7 +56,7 @@ impl Instruction {
 
     /// Constructs an instruction from code at `pc`
     ///
-    /// It does not check for instruction validity
+    /// It does not check for instruction validity.
     pub fn from(code: &[u64], pc: usize) -> ParsedInstruction {
         let insn = Instruction::from_raw(code[pc]);
         if insn.is_wide() {
@@ -92,21 +92,21 @@ impl Instruction {
     /// 
     /// Note that for wide instructions, ideally, the next instruction
     /// will have its low 32 bits zeroed. But we are not checking that here.
-    pub fn validate(self) -> Option<IllegalInstruction> {
+    pub fn validate(self) -> Result<(), IllegalInstruction> {
         match self.opcode & BPF_OPCODE_CLASS_MASK {
             BPF_LD => {
                 if self.is_wide() {
                     if self.off == 0 && self.src_reg() == 0 {
                         if self.dst_reg() < WRITABLE_REGISTER_COUNT {
-                            None
+                            Ok(())
                         } else {
-                            Some(IllegalInstruction::IllegalRegister)
+                            Err(IllegalInstruction::IllegalRegister)
                         }
                     } else {
-                        Some(IllegalInstruction::UnusedFieldNotZeroed)
+                        Err(IllegalInstruction::UnusedFieldNotZeroed)
                     }
                 } else {
-                    Some(IllegalInstruction::LegacyInstruction)
+                    Err(IllegalInstruction::LegacyInstruction)
                 }
             }
             BPF_LDX => self.is_store_load_valid::<true, false>(),
@@ -164,35 +164,35 @@ impl Instruction {
     ///   - BPF_LDX: Requires writable dst_reg, readable src_reg and off;
     ///   - BPF_STX: Requires readable dst_reg, readable src_reg and off;
     ///   - BPF_ST : Requires readable dst_reg, imm and off.
-    fn is_store_load_valid<const LOAD: bool, const IMM: bool>(self) -> Option<IllegalInstruction> {
+    fn is_store_load_valid<const LOAD: bool, const IMM: bool>(self) -> Result<(), IllegalInstruction> {
         if (self.opcode & BPF_OPCODE_MODIFIER_MASK) != BPF_MEM {
-            return Some(IllegalInstruction::IllegalOpCode);
+            return Err(IllegalInstruction::IllegalOpCode);
         }
 
         if LOAD {
             if self.dst_reg() >= WRITABLE_REGISTER_COUNT {
-                return Some(IllegalInstruction::IllegalRegister);
+                return Err(IllegalInstruction::IllegalRegister);
             }
         } else {
             if self.dst_reg() >= READABLE_REGISTER_COUNT {
-                return Some(IllegalInstruction::IllegalRegister);
+                return Err(IllegalInstruction::IllegalRegister);
             }
         }
 
         if IMM {
             if self.src_reg() != 0 {
-                return Some(IllegalInstruction::UnusedFieldNotZeroed);
+                return Err(IllegalInstruction::UnusedFieldNotZeroed);
             }
         } else {
             if self.src_reg() >= READABLE_REGISTER_COUNT {
-                return Some(IllegalInstruction::IllegalRegister);
+                return Err(IllegalInstruction::IllegalRegister);
             }
             if self.imm != 0 {
-                return Some(IllegalInstruction::UnusedFieldNotZeroed);
+                return Err(IllegalInstruction::UnusedFieldNotZeroed);
             }
         }
 
-        None
+        Ok(())
     }
 
     /// Checks if a jump instruction is valid
@@ -203,37 +203,37 @@ impl Instruction {
     /// 4. Other instructions either:
     ///    a) compares dst_reg against the immediate number;
     ///    b) or compares dst_reg against the src_reg.
-    fn is_jump_valid<const XLEN: u8>(self) -> Option<IllegalInstruction> {
+    fn is_jump_valid<const XLEN: u8>(self) -> Result<(), IllegalInstruction> {
         match self.opcode & BPF_OPCODE_JMP_MASK {
-            0xE0 => Some(IllegalInstruction::IllegalOpCode),
-            0xF0 => Some(IllegalInstruction::IllegalOpCode),
+            0xE0 => Err(IllegalInstruction::IllegalOpCode),
+            0xF0 => Err(IllegalInstruction::IllegalOpCode),
             BPF_JA => {
                 if XLEN == 32 {
-                    Some(IllegalInstruction::IllegalInstruction)
+                    Err(IllegalInstruction::IllegalInstruction)
                 } else {
                     if self.regs == 0 && self.imm == 0 {
-                        None
+                        Ok(())
                     } else {
-                        Some(IllegalInstruction::UnusedFieldNotZeroed)
+                        Err(IllegalInstruction::UnusedFieldNotZeroed)
                     }
                 }
             }
             BPF_CALL => {
                 // TODO: support pseudo tail call
                 if self.regs == 0 && self.off == 0 {
-                    None
+                    Ok(())
                 } else {
-                    Some(IllegalInstruction::UnusedFieldNotZeroed)
+                    Err(IllegalInstruction::UnusedFieldNotZeroed)
                 }
             }
             BPF_EXIT => {
                 if XLEN == 32 {
-                    Some(IllegalInstruction::IllegalInstruction)
+                    Err(IllegalInstruction::IllegalInstruction)
                 } else {
                     if self.regs == 0 && self.imm == 0 && self.off == 0 {
-                        None
+                        Ok(())
                     } else {
-                        Some(IllegalInstruction::UnusedFieldNotZeroed)
+                        Err(IllegalInstruction::UnusedFieldNotZeroed)
                     }
                 }
             }
@@ -252,38 +252,38 @@ impl Instruction {
     /// FIXME: Descriptions from https://docs.kernel.org/bpf/instruction-set.html
     /// conflicts with https://github.com/iovisor/bpf-docs/blob/master/eBPF.md about BPF_NEG.
     /// Please double check against the linux implementation.
-    fn is_arithmetic_valid(self) -> Option<IllegalInstruction> {
+    fn is_arithmetic_valid(self) -> Result<(), IllegalInstruction> {
         if self.off != 0 {
-            return Some(IllegalInstruction::UnusedFieldNotZeroed);
+            return Err(IllegalInstruction::UnusedFieldNotZeroed);
         }
 
         match self.opcode & BPF_OPCODE_ALU_MASK {
-            0xE0 => Some(IllegalInstruction::IllegalOpCode),
-            0xF0 => Some(IllegalInstruction::IllegalOpCode),
+            0xE0 => Err(IllegalInstruction::IllegalOpCode),
+            0xF0 => Err(IllegalInstruction::IllegalOpCode),
             BPF_NEG => {
                 if self.src_reg() != 0 {
-                    Some(IllegalInstruction::UnusedFieldNotZeroed)
+                    Err(IllegalInstruction::UnusedFieldNotZeroed)
                 } else if self.dst_reg() >= WRITABLE_REGISTER_COUNT {
-                    Some(IllegalInstruction::IllegalRegister)
+                    Err(IllegalInstruction::IllegalRegister)
                 } else if (self.opcode & BPF_X) != 0 {
-                    Some(IllegalInstruction::IllegalOpCode)
+                    Err(IllegalInstruction::IllegalOpCode)
                 } else {
-                    None
+                    Ok(())
                 }
             }
             BPF_END => {
                 if (self.opcode & BPF_OPCODE_CLASS_MASK) == BPF_ALU64 {
-                    Some(IllegalInstruction::IllegalOpCode)
+                    Err(IllegalInstruction::IllegalOpCode)
                 } else if self.src_reg() != 0 {
-                    Some(IllegalInstruction::UnusedFieldNotZeroed)
+                    Err(IllegalInstruction::UnusedFieldNotZeroed)
                 } else if self.dst_reg() < WRITABLE_REGISTER_COUNT {
                     if [16, 32, 64].contains(&self.imm) {
-                        None
+                        Ok(())
                     } else {
-                        Some(IllegalInstruction::IllegalInstruction)
+                        Err(IllegalInstruction::IllegalInstruction)
                     }
                 } else {
-                    Some(IllegalInstruction::IllegalRegister)
+                    Err(IllegalInstruction::IllegalRegister)
                 }
             }
             _ => self.is_arithmetic_registers_valid::<true>(),
@@ -296,32 +296,32 @@ impl Instruction {
 
     fn is_arithmetic_registers_valid<const WRITES_TO_DST: bool>(
         self,
-    ) -> Option<IllegalInstruction> {
+    ) -> Result<(), IllegalInstruction> {
         if WRITES_TO_DST {
             if self.dst_reg() >= WRITABLE_REGISTER_COUNT {
-                return Some(IllegalInstruction::IllegalRegister);
+                return Err(IllegalInstruction::IllegalRegister);
             }
         } else {
             if self.dst_reg() >= READABLE_REGISTER_COUNT {
-                return Some(IllegalInstruction::IllegalRegister);
+                return Err(IllegalInstruction::IllegalRegister);
             }
         }
 
         if self.is_arithmetic_source_immediate() {
             if self.src_reg() == 0 {
-                None
+                Ok(())
             } else {
-                Some(IllegalInstruction::UnusedFieldNotZeroed)
+                Err(IllegalInstruction::UnusedFieldNotZeroed)
             }
         } else {
             if self.imm == 0 {
                 if self.src_reg() < READABLE_REGISTER_COUNT {
-                    None
+                    Ok(())
                 } else {
-                    Some(IllegalInstruction::IllegalRegister)
+                    Err(IllegalInstruction::IllegalRegister)
                 }
             } else {
-                Some(IllegalInstruction::UnusedFieldNotZeroed)
+                Err(IllegalInstruction::UnusedFieldNotZeroed)
             }
         }
     }
@@ -331,10 +331,10 @@ impl Instruction {
     /// 1. BPF_XCHG: Exchanges the original value into src_reg;
     /// 2. BPF_CMPXCHG: The value is stored into R0, src_reg not modified.
     /// 3. Other instructions store into src_reg if the BPF_FETCH flag is set.
-    fn is_atomic_store_valid(self) -> Option<IllegalInstruction> {
+    fn is_atomic_store_valid(self) -> Result<(), IllegalInstruction> {
         let operant_size: u8 = self.opcode & BPF_OPCODE_SIZE_MASK;
         if !((cfg!(atomic64) && operant_size == BPF_DW) || (cfg!(atomic32) && operant_size == BPF_W)) {
-            return Some(IllegalInstruction::UnsupportedAtomicWidth);
+            return Err(IllegalInstruction::UnsupportedAtomicWidth);
         }
 
         match self.imm {
@@ -342,31 +342,31 @@ impl Instruction {
                 if self.src_reg() >= WRITABLE_REGISTER_COUNT
                     || self.dst_reg() >= READABLE_REGISTER_COUNT
                 {
-                    return Some(IllegalInstruction::IllegalRegister);
+                    return Err(IllegalInstruction::IllegalRegister);
                 }
                 if self.imm == 0 {
-                    None
+                    Ok(())
                 } else {
-                    Some(IllegalInstruction::UnusedFieldNotZeroed)
+                    Err(IllegalInstruction::UnusedFieldNotZeroed)
                 }
             }
             _ => {
                 if self.dst_reg() >= READABLE_REGISTER_COUNT {
-                    return Some(IllegalInstruction::IllegalRegister);
+                    return Err(IllegalInstruction::IllegalRegister);
                 }
                 if self.imm != BPF_ATOMIC_CMPXCHG && (self.imm & BPF_ATOMIC_FETCH) != 0 {
                     if self.src_reg() >= WRITABLE_REGISTER_COUNT {
-                        return Some(IllegalInstruction::IllegalRegister);
+                        return Err(IllegalInstruction::IllegalRegister);
                     }
                 } else {
                     if self.src_reg() >= READABLE_REGISTER_COUNT {
-                        return Some(IllegalInstruction::IllegalRegister);
+                        return Err(IllegalInstruction::IllegalRegister);
                     }
                 }
                 if self.imm == 0 {
-                    None
+                    Ok(())
                 } else {
-                    Some(IllegalInstruction::UnusedFieldNotZeroed)
+                    Err(IllegalInstruction::UnusedFieldNotZeroed)
                 }
             }
         }
