@@ -49,6 +49,58 @@ pub enum IllegalInstruction {
     OutOfBoundJump,
 }
 
+impl ParsedInstruction {
+    pub fn validate(&self) -> Result<(), IllegalInstruction> {
+        match self {
+            ParsedInstruction::None => Err(IllegalInstruction::IllegalInstruction),
+            ParsedInstruction::Instruction(i) => i.validate(),
+            ParsedInstruction::WideInstruction(w) => w.validate(),
+        }
+    }
+}
+
+impl WideInstruction {
+    pub fn imm0(&self) -> i32 {
+        self.instruction.imm
+    }
+
+    pub fn imm1(&self) -> i32 {
+        (self.imm >> 32) as i32
+    }
+
+    pub fn imm64(&self) -> u64 {
+        (self.imm0() as u32 as u64) | ((self.imm as u64 >> 32) << 32)
+    }
+
+    pub fn off1(&self) -> i32 {
+        self.imm as i32
+    }
+
+    pub fn validate(&self) -> Result<(), IllegalInstruction> {
+        if self.instruction.is_wide() {
+            let imm1 = match self.instruction.src_reg() {
+                BPF_IMM64_IMM => true,
+                BPF_IMM64_MAP_FD | BPF_IMM64_MAP_IDX => false,
+                BPF_IMM64_MAP_VALUE | BPF_IMM64_MAP_IDX_VALUE => true,
+                BPF_IMM64_BTF_ID => false,
+                BPF_IMM64_FUNC => false,
+                _ => return Err(IllegalInstruction::IllegalRegister),
+            };
+            if self.instruction.off == 0 && self.off1() == 0 && (imm1 || self.imm1() == 0) {
+                if self.instruction.dst_reg() < WRITABLE_REGISTER_COUNT {
+                    Ok(())
+                } else {
+                    Err(IllegalInstruction::IllegalRegister)
+                }
+            } else {
+                Err(IllegalInstruction::UnusedFieldNotZeroed)
+            }
+        } else {
+            Err(IllegalInstruction::IllegalInstruction)
+        }
+    }
+}
+
 impl Instruction {
     pub fn opcode(code: u64) -> u8 {
         (code & BPF_OPCODE_MASK) as u8
@@ -92,23 +144,10 @@ impl Instruction {
     /// 
     /// Note that for wide instructions, ideally, the next instruction
     /// will have its low 32 bits zeroed. But we are not checking that here.
+    /// Use [WideInstruction] to check that.
     pub fn validate(self) -> Result<(), IllegalInstruction> {
         match self.opcode & BPF_OPCODE_CLASS_MASK {
-            BPF_LD => {
-                if self.is_wide() {
-                    if self.off == 0 && self.src_reg() == 0 {
-                        if self.dst_reg() < WRITABLE_REGISTER_COUNT {
-                            Ok(())
-                        } else {
-                            Err(IllegalInstruction::IllegalRegister)
-                        }
-                    } else {
-                        Err(IllegalInstruction::UnusedFieldNotZeroed)
-                    }
-                } else {
-                    Err(IllegalInstruction::LegacyInstruction)
-                }
-            }
+            BPF_LD => Err(IllegalInstruction::LegacyInstruction),
             BPF_LDX => self.is_store_load_valid::<true, false>(),
             BPF_ST => self.is_store_load_valid::<false, true>(),
             BPF_STX => {
@@ -220,8 +259,11 @@ impl Instruction {
             }
             BPF_CALL => {
                 // TODO: support pseudo tail call
-                if self.regs == 0 && self.off == 0 {
-                    Ok(())
+                if self.dst_reg() == 0 && self.off == 0 {
+                    match self.src_reg() {
+                        BPF_CALL_HELPER | BPF_CALL_PSEUDO | BPF_CALL_KFUNC => Ok(()),
+                        _ => Err(IllegalInstruction::UnusedFieldNotZeroed),
+                    }
                 } else {
                     Err(IllegalInstruction::UnusedFieldNotZeroed)
                 }

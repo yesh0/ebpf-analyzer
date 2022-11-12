@@ -34,7 +34,8 @@
 //! also all operation codes are defined here as constants.
 //!
 //! To learn more about these instructions, I recommend reading the kernel source directly:
-//! [kernel/bpf/core.c](https://github.com/torvalds/linux/blob/master/kernel/bpf/core.c).   
+//! - [kernel/bpf/core.c](https://github.com/torvalds/linux/blob/master/kernel/bpf/core.c)
+//! - [linux/include/uapi/linux/bpf.h](https://github.com/torvalds/linux/blob/4dc12f37a8e98e1dca5521c14625c869537b50b6/include/uapi/linux/bpf.h#L1156-L1199)
 
 #![no_std]
 
@@ -101,6 +102,22 @@ pub const BPF_MEM     : u8 = 0x60;
 // [ 0xa0 reserved ]
 /// BPF mode modifier: exclusive add.
 pub const BPF_ATOMIC  : u8 = 0xc0;
+
+// Pseudo imm64 loads: stored in src_reg
+/// BPF ldimm64's rewrite type: immediate value
+pub const BPF_IMM64_IMM             : u8 = 0;
+/// BPF ldimm64's rewrite type: address of map (from map fd)
+pub const BPF_IMM64_MAP_FD          : u8 = 1;
+/// BPF ldimm64's rewrite type: address of map[0]+offset
+pub const BPF_IMM64_MAP_VALUE       : u8 = 2;
+/// BPF ldimm64's rewrite type: address of kernel variable
+pub const BPF_IMM64_BTF_ID          : u8 = 3;
+/// BPF ldimm64's rewrite type: address of the BPF function
+pub const BPF_IMM64_FUNC            : u8 = 4;
+/// BPF ldimm64's rewrite type: address of map (from map idx)
+pub const BPF_IMM64_MAP_IDX         : u8 = 5;
+/// BPF ldimm64's rewrite type: address of map[0]+offset
+pub const BPF_IMM64_MAP_IDX_VALUE   : u8 = 6;
 
 // For arithmetic (BPF_ALU/BPF_ALU64) and jump (BPF_JMP) instructions:
 // +----------------+--------+--------+
@@ -189,6 +206,14 @@ pub const CALL       : u8 = BPF_JMP   | BPF_CALL;
 pub const TAIL_CALL  : u8 = BPF_JMP   | BPF_X | BPF_CALL;
 /// BPF opcode: `exit` /// `return r0`.
 pub const EXIT       : u8 = BPF_JMP   | BPF_EXIT;
+
+// Pseudo calls: stored in src_reg
+/// BPF pseudo call: calls a helper function
+pub const BPF_CALL_HELPER : u8 = 0;
+/// BPF pseudo call: calls a BPF function relative to current PC
+pub const BPF_CALL_PSEUDO : u8 = 1;
+/// BPF pseudo call: calls a kernel function (kfunc)
+pub const BPF_CALL_KFUNC  : u8 = 2;
 
 // Operation codes -- extra for BPF_STX class
 

@@ -86,16 +86,12 @@ impl CodeBlocks {
         labels.push(0);
         let mut pc = 0 as CodeOffset;
         while pc < code.len() {
-            let (insn, pc_inc) = match Instruction::from(code, pc) {
+            let parsed = Instruction::from(code, pc);
+            parsed.validate()?;
+            let (insn, pc_inc) = match parsed {
                 ParsedInstruction::None => return Err(IllegalInstruction::IllegalInstruction),
-                ParsedInstruction::Instruction(i) => {
-                    i.validate()?;
-                    (i, 1)
-                }
-                ParsedInstruction::WideInstruction(w) => {
-                    w.instruction.validate()?;
-                    (w.instruction, 2)
-                }
+                ParsedInstruction::Instruction(i) => (i, 1),
+                ParsedInstruction::WideInstruction(w) => (w.instruction, 2),
             };
             pc += pc_inc;
 
