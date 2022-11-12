@@ -1,7 +1,6 @@
 use ebpf_analyzer::{
     analyzer::{Analyzer, VerificationError},
-    blocks::CodeBlocks,
-    spec::{Instruction, ParsedInstruction},
+    spec::{Instruction, ParsedInstruction}, blocks::FunctionBlock,
 };
 
 pub const SIMPLE1: &str = include_str!("bpf-src/simple-1.txt");
@@ -53,9 +52,8 @@ fn validate_valid_code() {
             }
             ParsedInstruction::WideInstruction(i) => {
                 assert!(i.instruction.is_wide(), "Wide instruction mismatched");
-                if let Err(err) = i.instruction.validate() {
-                    panic!("Invalid code[{}]: {:?}: {:?}", pc, err, i.instruction);
-                }
+                assert!(i.instruction.validate().is_err());
+                assert!(i.validate().is_ok());
                 pc += 2;
             }
         }
@@ -65,8 +63,8 @@ fn validate_valid_code() {
 #[test]
 fn validate_valid_blocks() {
     let code = parse_llvm_dump(SIMPLE1);
-    match CodeBlocks::new(&code) {
-        Ok(blocks) => assert!(blocks.block_count() == 10, "Block count does not match"),
+    match FunctionBlock::new(&code) {
+        Ok(blocks) => assert!(blocks[0].block_count() == 10, "Block count does not match"),
         Err(err) => panic!("Err: {:?}", err),
     }
     match Analyzer::analyze(&code) {

@@ -10,7 +10,7 @@ pub type BlockId = usize;
 
 pub const TERMINAL_PSEUDO_BLOCK: usize = usize::MAX;
 
-pub struct CodeBlocks {
+pub struct FunctionBlock {
     /// Start offsets of each block
     pub block_starts: Vec<CodeOffset>,
     /// `from[this_block]` points to the blocks that this_block may jump to
@@ -19,13 +19,23 @@ pub struct CodeBlocks {
     pub to: Vec<Vec<usize>>,
 }
 
+pub type FunctionBlocks = Vec<FunctionBlock>;
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum IllegalStructure {
     BlockOpenEnd,
     Empty,
 }
 
-impl CodeBlocks {
+/// Boundaries
+struct Boundaries {
+    /// Function addresses
+    functions: Vec<CodeOffset>,
+    /// Block boundaries, including a terminal label (at `code.len()`)
+    labels: Vec<CodeOffset>,
+}
+
+impl Boundaries {
     /// Checks if a jump is somehow valid
     ///
     /// Note that jumps might jump into the middle of wide instructions,
@@ -34,24 +44,16 @@ impl CodeBlocks {
     fn checked_jump(
         code: &[u64],
         pc: CodeOffset,
-        offset: i16,
+        offset: i32,
     ) -> Result<CodeOffset, IllegalInstruction> {
-        let offset = offset as i32;
-
         // Checks if the target PC is out of bounds
-        let (target, bound) = if offset >= 0 {
-            if code.len() - pc > offset as usize {
-                (pc + offset as usize, code.len())
-            } else {
-                return Err(IllegalInstruction::OutOfBoundJump);
-            }
+        let target = if let Some(t) = pc.checked_add_signed(offset as isize) {
+            t
         } else {
-            if (-offset) as usize <= pc {
-                (pc - (-offset as usize), pc - 1)
-            } else {
-                return Err(IllegalInstruction::OutOfBoundJump);
-            }
+            return Err(IllegalInstruction::OutOfBoundJump);
         };
+
+        let bound = if offset >= 0 { code.len() } else { pc - 1 };
 
         // Checks if the target instruction is out of bounds
         let size = match Instruction::from(code, target) {
@@ -59,31 +61,33 @@ impl CodeBlocks {
             ParsedInstruction::Instruction(_) => 1,
             ParsedInstruction::WideInstruction(_) => 2,
         };
-        if bound - size < target {
-            return Err(IllegalInstruction::OutOfBoundJump);
+        if let Some(end) = target.checked_add(size) {
+            if end <= bound {
+                // Note that we might still jump into the middle of a wide instruction
+                return Ok(target);
+            }
         }
 
-        // Note that we might still jump into the middle of a wide instruction
-        return Ok(target);
+        Err(IllegalInstruction::OutOfBoundJump)
     }
 
     /// Compute the absolute PC that a jump instruction jumps to
     ///
     /// You should only use this after checking all jumps.
     fn unchecked_jump(pc: CodeOffset, offset: i16) -> CodeOffset {
-        if offset >= 0 {
-            pc + offset as usize
-        } else {
-            pc - (-offset) as usize
-        }
+        pc.checked_add_signed(offset as isize).unwrap()
     }
 
-    /// Split the code into blocks judging from jump instructions
+    /// Split the code into blocks judging from jump instructions and function calls
     ///
     /// It checks whether the control flow will jump out of the code boundaries.
-    fn sorted_block_boundaries(code: &[u64]) -> Result<Vec<CodeOffset>, IllegalInstruction> {
+    ///
+    /// TODO: It does not handle tail calls yet, which should behave like a BPF_EXIT.
+    fn sorted_boundaries(code: &[u64]) -> Result<Self, IllegalInstruction> {
         let mut labels: Vec<CodeOffset> = Vec::new();
+        let mut functions: Vec<CodeOffset> = Vec::new();
         labels.push(0);
+        functions.push(0);
         let mut pc = 0 as CodeOffset;
         while pc < code.len() {
             let parsed = Instruction::from(code, pc);
@@ -93,6 +97,17 @@ impl CodeBlocks {
                 ParsedInstruction::Instruction(i) => (i, 1),
                 ParsedInstruction::WideInstruction(w) => (w.instruction, 2),
             };
+
+            if let Some(offset) = insn.is_pseudo_call().or(insn.is_ldimm64_func()) {
+                // It seems the two instructions, despite one being a wide isns,
+                // both have the target address as `pc + 1`.
+                if let Ok(target) = Self::checked_jump(code, pc + 1, offset) {
+                    functions.push(target);
+                } else {
+                    return Err(IllegalInstruction::OutOfBoundFunction);
+                }
+            }
+
             pc += pc_inc;
 
             if let Some(jump) = insn.jumps_to() {
@@ -100,128 +115,256 @@ impl CodeBlocks {
                     JumpInstruction::Exit => labels.push(pc),
                     JumpInstruction::Unconditional(offset) => {
                         labels.push(pc);
-                        match CodeBlocks::checked_jump(code, pc, offset) {
-                            Ok(target) => labels.push(target),
-                            Err(err) => return Err(err),
-                        }
+                        labels.push(Self::checked_jump(code, pc, offset as i32)?);
                     }
                     JumpInstruction::Conditional(offset) => {
                         labels.push(pc);
-                        match CodeBlocks::checked_jump(code, pc, offset) {
-                            Ok(target) => labels.push(target),
-                            Err(err) => return Err(err),
-                        }
+                        labels.push(Self::checked_jump(code, pc, offset as i32)?);
                     }
                 }
             }
         }
+        functions.sort_unstable();
+        functions.dedup();
         labels.sort_unstable();
         labels.dedup();
-        Ok(labels)
+        Ok(Self { functions, labels })
     }
 
     /// Builds a directed graph from the control flow
     ///
     /// It also checks whether the jump destinations (block borders) match byte code borders.
+    fn parse_functions(&self, code: &[u64]) -> Result<Vec<FunctionBlock>, VerificationError> {
+        let mut current_label = 0usize;
+        let mut functions = Vec::new();
+        functions.reserve(self.functions.len());
+        for i in 0..self.functions.len() {
+            let start = self.functions[i];
+            let end = if i + 1 < self.functions.len() {
+                self.functions[i + 1]
+            } else {
+                code.len()
+            };
+            let (labels, function) = self.parse_graph((start, end), current_label, code)?;
+            current_label += labels;
+            functions.push(function);
+        }
+        Ok(functions)
+    }
+
     fn parse_graph(
+        &self,
+        (start, end): (CodeOffset, CodeOffset),
+        label_i: usize,
         code: &[u64],
-        boundaries: &Vec<CodeOffset>,
-    ) -> Result<(Vec<Vec<BlockId>>, Vec<Vec<BlockId>>), VerificationError> {
+    ) -> Result<(usize, FunctionBlock), VerificationError> {
+        let labels = self.get_labels_within(label_i, (start, end))?;
+        let block_count = labels.len() - 1;
+
         let mut from: Vec<Vec<BlockId>> = Vec::new();
         let mut to: Vec<Vec<BlockId>> = Vec::new();
-        let block_count = boundaries.len() - 1;
         from.resize(block_count, Vec::new());
         to.resize(block_count, Vec::new());
 
-        let mut pc = 0 as CodeOffset;
-        if code.last().is_some() {
-            for block_id in 0..block_count {
-                let block_end = boundaries[block_id + 1];
-                while pc < block_end {
-                    let (instruction, pc_inc) = match Instruction::from(code, pc) {
-                        ParsedInstruction::None => {
-                            panic!("Should have verified in sorted_block_boundaries")
-                        }
-                        ParsedInstruction::Instruction(i) => (i, 1),
-                        ParsedInstruction::WideInstruction(w) => (w.instruction, 2),
-                    };
-                    pc += pc_inc;
+        for (block_id, block) in labels.windows(2).enumerate() {
+            let (mut pc, block_end) = (block[0], block[1]);
 
-                    if pc == block_end {
-                        if let Some(jump) = instruction.jumps_to() {
-                            if let Some(offset) = match jump {
-                                JumpInstruction::Unconditional(offset) => Some(offset),
-                                JumpInstruction::Conditional(offset) => {
-                                    if block_id + 1 < block_count {
-                                        from[block_id].push(block_id + 1);
-                                        to[block_id + 1].push(block_id);
-                                        Some(offset)
-                                    } else {
-                                        return Err(VerificationError::IllegalStructure(
-                                            IllegalStructure::BlockOpenEnd,
-                                        ));
-                                    }
-                                }
-                                JumpInstruction::Exit => {
-                                    from[block_id].push(TERMINAL_PSEUDO_BLOCK);
-                                    None
-                                }
-                            } {
-                                let dst = boundaries
-                                    .binary_search(&CodeBlocks::unchecked_jump(pc, offset))
-                                    .ok()
-                                    .unwrap();
-                                from[block_id].push(dst);
-                                to[dst].push(block_id);
-                            }
-                        } else {
-                            if block_id + 1 < block_count {
-                                from[block_id].push(block_id + 1);
-                                to[block_id + 1].push(block_id);
-                            } else {
-                                return Err(VerificationError::IllegalStructure(
-                                    IllegalStructure::BlockOpenEnd,
-                                ));
-                            }
+            while pc < block_end {
+                let (instruction, pc_inc) = match Instruction::from(code, pc) {
+                    ParsedInstruction::None => {
+                        unreachable!("Should have verified in sorted_block_boundaries")
+                    }
+                    ParsedInstruction::Instruction(i) => (i, 1),
+                    ParsedInstruction::WideInstruction(w) => (w.instruction, 2),
+                };
+                pc += pc_inc;
+
+                if pc == block_end {
+                    // Maybe the following code needs some cleanup...
+                    //
+                    // Mainly, code blocks are connected either because:
+                    // Cond 1. they are neighbouring and the first block does not jumps away unconditionally;
+                    // Cond 2. A block jumps there (and we need a binary search).
+                    let jumps_to = match instruction.jumps_to() {
+                        // Cond 2.
+                        Some(JumpInstruction::Unconditional(offset)) => offset,
+                        // Cond 1. & Cond 2.
+                        Some(JumpInstruction::Conditional(offset))
+                            if block_id + 1 < block_count =>
+                        {
+                            from[block_id].push(block_id + 1);
+                            to[block_id + 1].push(block_id);
+                            offset
+                        }
+                        // Cond 2.
+                        Some(JumpInstruction::Exit) => {
+                            from[block_id].push(TERMINAL_PSEUDO_BLOCK);
+                            continue;
+                        }
+                        // Cond1
+                        None if block_id + 1 < block_count => {
+                            from[block_id].push(block_id + 1);
+                            to[block_id + 1].push(block_id);
+                            continue;
+                        }
+                        _ => {
+                            return Err(VerificationError::IllegalStructure(
+                                IllegalStructure::BlockOpenEnd,
+                            ))
+                        }
+                    };
+                    // Cond 2 processing
+                    if let Ok(dst) = labels.binary_search(&Self::unchecked_jump(pc, jumps_to)) {
+                        if dst < block_count {
+                            from[block_id].push(dst);
+                            to[dst].push(block_id);
+                            continue;
                         }
                     }
-                }
-                if pc != block_end {
                     return Err(VerificationError::IllegalInstruction(
-                        IllegalInstruction::UnalignedJump,
+                        IllegalInstruction::OutOfBoundJump,
                     ));
                 }
             }
-            if pc == code.len() {
-                Ok((from, to))
-            } else {
-                Err(VerificationError::IllegalInstruction(
+            if pc != block_end {
+                // When the last instruction is a 128-bit one
+                // and some instructions try to jump into the middle of it.
+                return Err(VerificationError::IllegalInstruction(
                     IllegalInstruction::UnalignedJump,
-                ))
+                ));
             }
-        } else {
-            Err(VerificationError::IllegalStructure(IllegalStructure::Empty))
         }
+        Ok((
+            block_count,
+            FunctionBlock {
+                block_starts: Vec::from(&labels[0..(labels.len() - 1)]),
+                from,
+                to,
+            },
+        ))
     }
 
-    pub fn new(code: &[u64]) -> Result<CodeBlocks, VerificationError> {
-        match CodeBlocks::sorted_block_boundaries(code) {
-            Ok(mut boundaries) => match CodeBlocks::parse_graph(code, &boundaries) {
-                Ok((from, to)) => {
-                    boundaries.pop();
-                    Ok(CodeBlocks {
-                        block_starts: boundaries,
-                        from,
-                        to,
-                    })
-                }
-                Err(err) => Err(err),
-            },
-            Err(err) => Err(VerificationError::IllegalInstruction(err)),
+    /// Gets a slice of all labels with a range of [CodeOffset]
+    ///
+    /// It expects both ends are labeled and includes both in the returned slice.
+    ///
+    /// For example, with `labels: [..., func1, label1, label2, func2, ...]`,
+    /// calling this function with `label_i` pointing to `func1`, `(start, end) = (func1, func2)`
+    /// gets `&[func1, label1, label2, func2]`.
+    fn get_labels_within(
+        &self,
+        label_i: usize,
+        (start, end): (CodeOffset, CodeOffset),
+    ) -> Result<&[usize], VerificationError> {
+        if label_i >= self.labels.len() || self.labels[label_i] != start {
+            // Open end in the previous function
+            // Probably it is a redundant check.
+            return Err(VerificationError::IllegalStructure(
+                IllegalStructure::BlockOpenEnd,
+            ));
         }
+        for i in (label_i + 1)..self.labels.len() {
+            if self.labels[i] == end {
+                return Ok(&self.labels[label_i..=i]);
+            } else if self.labels[i] > end {
+                return Err(VerificationError::IllegalStructure(
+                    IllegalStructure::BlockOpenEnd,
+                ));
+            }
+        }
+        Err(VerificationError::IllegalStructure(
+            IllegalStructure::BlockOpenEnd,
+        ))
+    }
+}
+
+impl FunctionBlock {
+    pub fn new(code: &[u64]) -> Result<Vec<FunctionBlock>, VerificationError> {
+        let boundaries = Boundaries::sorted_boundaries(code)?;
+        boundaries.parse_functions(code)
     }
 
     pub fn block_count(&self) -> usize {
         self.block_starts.len()
     }
+}
+
+#[cfg(test)]
+use ebpf_consts::*;
+
+#[test]
+pub fn test_inter_function_jump() {
+    let code: &[u64] = &[
+        // Code:
+        //   main:
+        // 0: call test (pc + 2)
+        // 1: if R0 == 0 goto test (pc + 1)
+        // 2: exit
+        //   test:
+        // 3: exit
+
+        // main:
+        Instruction::pack(BPF_JMP_CALL, BPF_CALL_PSEUDO, 0, 0, 2),
+        Instruction::pack(BPF_JMP | BPF_K | BPF_JEQ, 0, 0, 1, 0),
+        Instruction::pack(BPF_JMP_EXIT, 0, 0, 0, 0),
+        // test:
+        Instruction::pack(BPF_JMP_EXIT, 0, 0, 0, 0),
+    ];
+    let result = FunctionBlock::new(code);
+    match result.err() {
+        Some(VerificationError::IllegalInstruction(IllegalInstruction::OutOfBoundJump)) => {}
+        _ => assert!(false),
+    }
+
+    let normal: &[u64] = &[
+        // Code:
+        //   main:
+        // 0: call test (pc + 2)
+        // 1: R0 = 0
+        // 2: exit
+        //   test:
+        // 3: exit
+
+        // main:
+        Instruction::pack(BPF_JMP_CALL, BPF_CALL_PSEUDO, 0, 0, 2),
+        Instruction::pack(BPF_ALU | BPF_K | BPF_MOV, 0, 0, 0, 0),
+        Instruction::pack(BPF_JMP_EXIT, 0, 0, 0, 0),
+        // test:
+        Instruction::pack(BPF_JMP_EXIT, 0, 0, 0, 0),
+    ];
+    let result = FunctionBlock::new(normal);
+    assert!(result.is_ok());
+    assert!(result.ok().unwrap().len() == 2);
+
+    let complex_normal: &[u64] = &[
+        // Code:
+        //   main:
+        // 0: call test (pc + 5)
+        // 1: R0 = 0
+        // 2: exit
+        //   recur:
+        // 3: R0 = 0
+        // 4: call recur (pc - 2)
+        // 5: exit
+        //   test:
+        // 6: call recur (pc - 4)
+        // 7: R0 = 0
+        // 8: exit
+
+        // main:
+        Instruction::pack(BPF_JMP_CALL, BPF_CALL_PSEUDO, 0, 0, 5),
+        Instruction::pack(BPF_ALU | BPF_K | BPF_MOV, 0, 0, 0, 0),
+        Instruction::pack(BPF_JMP_EXIT, 0, 0, 0, 0),
+        // rec:
+        Instruction::pack(BPF_ALU | BPF_K | BPF_MOV, 0, 0, 0, 0),
+        Instruction::pack(BPF_JMP_CALL, BPF_CALL_PSEUDO, 0, 0, -2),
+        Instruction::pack(BPF_JMP_EXIT, 0, 0, 0, 0),
+        // test:
+        Instruction::pack(BPF_JMP_CALL, BPF_CALL_PSEUDO, 0, 0, -4),
+        Instruction::pack(BPF_ALU | BPF_K | BPF_MOV, 0, 0, 0, 0),
+        Instruction::pack(BPF_JMP_EXIT, 0, 0, 0, 0),
+    ];
+    let result = FunctionBlock::new(complex_normal);
+    assert!(result.is_ok());
+    assert!(result.ok().unwrap().len() == 3);
 }

@@ -201,11 +201,9 @@ pub const BPF_JSLT  : u8 = 0xc0;
 pub const BPF_JSLE  : u8 = 0xd0;
 
 /// BPF opcode: `call imm` /// helper function call to helper with key `imm`.
-pub const CALL       : u8 = BPF_JMP   | BPF_CALL;
-/// BPF opcode: tail call.
-pub const TAIL_CALL  : u8 = BPF_JMP   | BPF_X | BPF_CALL;
+pub const BPF_JMP_CALL       : u8 = BPF_JMP   | BPF_CALL;
 /// BPF opcode: `exit` /// `return r0`.
-pub const EXIT       : u8 = BPF_JMP   | BPF_EXIT;
+pub const BPF_JMP_EXIT       : u8 = BPF_JMP   | BPF_EXIT;
 
 // Pseudo calls: stored in src_reg
 /// BPF pseudo call: calls a helper function

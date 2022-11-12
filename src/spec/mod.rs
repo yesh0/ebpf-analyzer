@@ -47,6 +47,7 @@ pub enum IllegalInstruction {
     UnsupportedAtomicWidth,
     UnalignedJump,
     OutOfBoundJump,
+    OutOfBoundFunction,
 }
 
 impl ParsedInstruction {
@@ -102,6 +103,16 @@ impl WideInstruction {
 }
 
 impl Instruction {
+    pub fn pack(opcode: u8, src_reg: u8, dst_reg: u8, offset: i16, imm: i32) -> u64 {
+        let opcode = opcode as u64;
+        let src_reg = src_reg as u64;
+        let dst_reg = dst_reg as u64;
+        let offset = offset as u16 as u64;
+        let imm = imm as u32 as u64;
+
+        opcode | (dst_reg << 8) | (src_reg << (8 + 4)) | (offset << 16) | (imm << 32)
+    }
+
     pub fn opcode(code: u64) -> u8 {
         (code & BPF_OPCODE_MASK) as u8
     }
@@ -185,6 +196,22 @@ impl Instruction {
             } else {
                 Some(JumpInstruction::Conditional(self.off))
             }
+        } else {
+            None
+        }
+    }
+
+    pub fn is_pseudo_call(self) -> Option<i32> {
+        if self.opcode == BPF_JMP_CALL && self.src_reg() == BPF_CALL_PSEUDO {
+            Some(self.imm)
+        } else {
+            None
+        }
+    }
+
+    pub fn is_ldimm64_func(self) -> Option<i32> {
+        if self.is_wide() && self.src_reg() == BPF_IMM64_FUNC {
+            Some(self.imm)
         } else {
             None
         }
