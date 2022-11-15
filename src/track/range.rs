@@ -1,6 +1,11 @@
-use core::{ops::{AddAssign, MulAssign, SubAssign}, fmt::{Debug, LowerHex}};
+use core::{
+    fmt::{Debug, LowerHex},
+    ops::{AddAssign, MulAssign, SubAssign},
+};
 
 use num_traits::PrimInt;
+
+use super::comparable::ComparisonResult;
 
 pub trait RangeItem: PrimInt + LowerHex {
     type Unsigned: PrimInt;
@@ -56,6 +61,42 @@ impl<Int: RangeItem> RangePair<Int> {
 
     pub fn is_constant(&self) -> bool {
         self.min == self.max
+    }
+
+    /// Returns the intersection with rhs
+    ///
+    /// It may incur an invalid state, which the caller is responsible to check.
+    pub fn intersects(&self, rhs: &Self) -> Self {
+        Self::new(self.min.max(rhs.min), self.max.min(rhs.max))
+    }
+
+    /// Modifies self and rhs
+    pub fn le(&mut self, rhs: &mut Self) -> ComparisonResult<Self> {
+        if self.max <= rhs.min {
+            // self.any <= self.max <= rhs.min <= rhs.any
+            ComparisonResult::Always
+        } else if rhs.max < self.min {
+            // self.any >= self.min > rhs.max >= rhs.any
+            ComparisonResult::Never
+        } else {
+            let intersection = self.intersects(rhs);
+            // Computing self > rhs
+            let (mut r1, mut r2) = (self.clone(), rhs.clone());
+            r1.min = if intersection.min == r2.min {
+                intersection.min.add(Int::one())
+            } else {
+                intersection.min
+            };
+            r2.max = if intersection.max == r1.max {
+                intersection.max.sub(Int::one())
+            } else {
+                intersection.max
+            };
+            // Computing self <= rhs is much easier
+            self.max = intersection.max;
+            rhs.min = intersection.min;
+            ComparisonResult::Perhaps((r1, r2))
+        }
     }
 }
 
@@ -124,13 +165,19 @@ impl<Int: RangeItem> Debug for RangePair<Int> {
             f.write_fmt(format_args!("0x{:x}..=0x{:x}", &self.min, &self.max))
         } else {
             if self.min < Int::zero() {
-                f.write_fmt(format_args!("-0x{:x}", self.min.to_i64().unwrap().unsigned_abs()))?;
+                f.write_fmt(format_args!(
+                    "-0x{:x}",
+                    self.min.to_i64().unwrap().unsigned_abs()
+                ))?;
             } else {
                 f.write_fmt(format_args!("0x{:x}", self.min))?;
             }
             f.write_str("..=")?;
             if self.max < Int::zero() {
-                f.write_fmt(format_args!("-0x{:x}", self.max.to_i64().unwrap().unsigned_abs()))
+                f.write_fmt(format_args!(
+                    "-0x{:x}",
+                    self.max.to_i64().unwrap().unsigned_abs()
+                ))
             } else {
                 f.write_fmt(format_args!("0x{:x}", self.max))
             }
@@ -186,6 +233,21 @@ pub fn range_test() {
 }
 
 #[cfg(test)]
+fn range_gen() -> RangePair<i32> {
+    let mut rng = thread_rng();
+    let (i, j) = {
+        let i: i32 = rng.gen();
+        let j: i32 = rng.gen();
+        if i > j {
+            (j, i)
+        } else {
+            (i, j)
+        }
+    };
+    RangePair::new(i, j)
+}
+
+#[cfg(test)]
 fn test_varied(
     ops: &[(
         fn(&mut RangePair<i32>, y: &RangePair<i32>) -> (),
@@ -193,20 +255,6 @@ fn test_varied(
     )],
 ) {
     use alloc::vec::Vec;
-
-    let range_gen = || {
-        let mut rng = thread_rng();
-        let (i, j) = {
-            let i: i32 = rng.gen();
-            let j: i32 = rng.gen();
-            if i > j {
-                (j, i)
-            } else {
-                (i, j)
-            }
-        };
-        RangePair::new(i, j)
-    };
 
     for _ in 0..10000 {
         let r1 = range_gen();
@@ -227,7 +275,7 @@ fn test_varied(
             for i in 0..ops.len() {
                 let result = results[i];
                 let value_op = ops[i].1;
-                assert!(result.contains(value_op(a, b)), "{}: ({:?} op {:?}) = {:?}", i, r1, r2, result);
+                assert!(result.contains(value_op(a, b)));
             }
         }
     }
@@ -240,4 +288,33 @@ pub fn test_varied_operants() {
         (|x, y| x.sub_assign(y), |x, y| x.wrapping_sub(y)),
         (|x, y| x.mul_assign(y), |x, y| x.wrapping_mul(y)),
     ]);
+}
+
+#[test]
+pub fn test_range_comparison() {
+    for _ in 0..10000 {
+        let (r1, r2) = (range_gen(), range_gen());
+        let (mut rc1, mut rc2) = (r1.clone(), r2.clone());
+        match rc1.le(&mut rc2) {
+            ComparisonResult::Always => assert!(r1.max <= r2.min),
+            ComparisonResult::Never => assert!(r1.min > r2.max),
+            ComparisonResult::Perhaps((o1, o2)) => {
+                let mut rng = thread_rng();
+                for _ in 0..1000 {
+                    let i = rng.gen_range(r1.min..=r1.max);
+                    let j = rng.gen_range(r2.min..=r2.max);
+                    if i <= j {
+                        assert!(rc1.contains(i));
+                        assert!(rc2.contains(j));
+                    } else {
+                        assert!(o1.contains(i));
+                        assert!(o2.contains(j));
+                    }
+                }
+                let i = rng.gen_range(rc1.min..=rc1.max);
+                rc1.le(&mut RangePair::exact(i));
+                assert!(rc1.max == i);
+            }
+        }
+    }
 }

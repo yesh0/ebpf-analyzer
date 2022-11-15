@@ -1,4 +1,4 @@
-use core::{ops::{Add, Sub, Mul, Shl, Shr, BitAnd, BitOr, BitXor}, fmt::Debug};
+use core::{ops::{Add, Sub, Mul, Shl, Shr, BitAnd, BitOr, BitXor, Not}, fmt::Debug};
 
 use num_traits::{Bounded, Signed, AsPrimitive};
 
@@ -196,6 +196,14 @@ impl BitXor<NumBits> for NumBits {
         let value = self.value ^ rhs.value;
         let mu = self.mask | rhs.mask;
         Self::pruned(mu, value)
+    }
+}
+
+impl Not for NumBits {
+    type Output = NumBits;
+
+    fn not(self) -> Self::Output {
+        Self::pruned(self.mask, !self.value)
     }
 }
 

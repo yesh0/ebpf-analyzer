@@ -10,11 +10,11 @@ use super::{range::RangePair, tnum::NumBits};
 /// want to construct 32-bit ones with [lower_half()] for example.
 #[derive(Clone)]
 pub struct Scalar {
-    bits: NumBits,
-    irange: RangePair<i64>,
-    irange32: RangePair<i32>,
-    urange: RangePair<u64>,
-    urange32: RangePair<u32>,
+    pub(super) bits: NumBits,
+    pub(super) irange: RangePair<i64>,
+    pub(super) irange32: RangePair<i32>,
+    pub(super) urange: RangePair<u64>,
+    pub(super) urange32: RangePair<u32>,
 }
 
 pub trait ShiftAssign<const WIDTH: u8, Rhs = Self> {
@@ -75,8 +75,8 @@ impl Scalar {
         debug_assert!(WIDTH == 32 || WIDTH == 64);
 
         macro_rules! check_constant {
-            ($irange:ident, $urange:ident) => {
-                if self.bits.is_constant() {
+            ($irange:ident, $urange:ident, $bits:expr) => {
+                if $bits.is_constant() {
                     if self.$irange.is_constant() && self.$urange.is_constant() {
                         Some(true)
                     } else {
@@ -93,9 +93,9 @@ impl Scalar {
         }
 
         if WIDTH == 32 {
-            check_constant!(irange32, urange32)
+            check_constant!(irange32, urange32, self.bits.lower_half())
         } else {
-            check_constant!(irange, urange)
+            check_constant!(irange, urange, self.bits)
         }
     }
 
@@ -206,7 +206,7 @@ impl Scalar {
     ///
     /// This function must be called to sync the sign bit info between
     /// `iranges` and `bits` after changes in the sign bit.
-    fn sync_bounds(&mut self) {
+    pub(super) fn sync_bounds(&mut self) {
         self.narrow_bounds();
         self.sync_sign_bounds();
         self.sync_bits();
@@ -653,7 +653,7 @@ pub fn known_value_test() {
 }
 
 #[cfg(test)]
-fn unknown(shift: u8) -> Scalar {
+pub fn unknown(shift: u8) -> Scalar {
     if shift == 31 {
         Scalar {
             bits: NumBits::pruned(1 << shift, 0),
