@@ -1,3 +1,37 @@
+const MATHML_TAGS = [
+  'annotation',
+  'annotation-xml',
+  'maction',
+  'math',
+  'merror',
+  'mfrac',
+  'mi',
+  'mmultiscripts',
+  'mn',
+  'mo',
+  'mover',
+  'mpadded',
+  'mphantom',
+  'mprescripts',
+  'mroot',
+  'mrow',
+  'ms',
+  'mspace',
+  'msqrt',
+  'mstyle',
+  'msub',
+  'msubsup',
+  'msup',
+  'mtable',
+  'mtd',
+  'mtext',
+  'mtr',
+  'munder',
+  'munderover',
+  'none',
+  'semantics',
+]
+
 function sidebarGuide() {
   return [
     {
@@ -34,6 +68,18 @@ function sidebarGuide() {
   ]
 }
 
+function sidebarAnalyzer() {
+  return [
+    {
+      text: 'eBPF Analyzer Implementation',
+      items: [
+        { text: 'Introduction', link: '/analyzer/index' },
+        { text: 'Conditional Jump Verification', link: '/analyzer/conditional' },
+      ],
+    },
+  ]
+}
+
 function footerLicense() {
   return {
     message: 'Released under a <a href="https://creativecommons.org/licenses/by-sa/4.0/">Creative Commons Attribution-ShareAlike 4.0 International License</a>',
@@ -54,12 +100,29 @@ export default {
       text: 'Page source',
     },
     lastUpdatedText: 'Last updated at',
+    nav: [
+      { text: 'Guide', link: '/' },
+      { text: 'Analyzer', link: '/analyzer/' },
+    ],
     socialLinks: [
       { icon: 'github', link: 'https://github.com/yesh0/ebpf-analyzer/tree/docs' },
     ],
     footer: footerLicense(),
     sidebar: {
+      '/analyzer': sidebarAnalyzer(),
       '/': sidebarGuide(),
+    },
+  },
+  markdown: {
+    config: (md) => {
+      md.use(require('@renbaoshuo/markdown-it-katex'))
+    },
+  },
+  vue: {
+    template: {
+      compilerOptions: {
+        isCustomElement: (tag) => MATHML_TAGS.includes(tag),
+      },
     },
   },
 }

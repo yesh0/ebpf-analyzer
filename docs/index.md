@@ -10,6 +10,9 @@ hero:
       text: Get Started
       link: /prerequisites
     - theme: alt
+      text: eBPF Analyzer
+      link: /analyzer/
+    - theme: alt
       text: View on GitHub
       link: https://github.com/yesh0/ebpf-analyzer/tree/docs
 ---
