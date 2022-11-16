@@ -150,9 +150,9 @@ impl Add<NumBits> for NumBits {
     type Output = NumBits;
 
     fn add(self, rhs: NumBits) -> Self::Output {
-        let sm = self.mask.overflowing_add(rhs.mask).0;
-        let sv = self.value.overflowing_add(rhs.value).0;
-        let sigma = sm.overflowing_add(sv).0;
+        let sm = self.mask.wrapping_add(rhs.mask);
+        let sv = self.value.wrapping_add(rhs.value);
+        let sigma = sm.wrapping_add(sv);
         let chi = sigma ^ sv;
         let mu = chi | self.mask | rhs.mask;
         Self::pruned(mu, sv)
@@ -163,9 +163,9 @@ impl Sub<NumBits> for NumBits {
     type Output = NumBits;
 
     fn sub(self, rhs: NumBits) -> Self::Output {
-        let dv = self.value.overflowing_sub(rhs.value).0;
-        let alpha = dv.overflowing_add(self.mask).0;
-        let beta = dv.overflowing_sub(rhs.mask).0;
+        let dv = self.value.wrapping_sub(rhs.value);
+        let alpha = dv.wrapping_add(self.mask);
+        let beta = dv.wrapping_sub(rhs.mask);
         let chi = alpha ^ beta;
         let mu = chi | self.mask | rhs.mask;
         Self::pruned(mu, dv)
@@ -215,7 +215,7 @@ impl Mul<NumBits> for NumBits {
     type Output = NumBits;
 
     fn mul(mut self, mut rhs: NumBits) -> Self::Output {
-        let acc_v = self.value.overflowing_mul(rhs.value).0;
+        let acc_v = self.value.wrapping_mul(rhs.value);
         let mut acc_m = Self::exact(0);
 
         while self.value != 0 || self.mask != 0 {
@@ -250,15 +250,15 @@ pub fn track_exact_values() {
 
         let result = i + j;
         assert!(result.is_constant());
-        assert!(result.value == i.value.overflowing_add(j.value).0);
+        assert!(result.value == i.value.wrapping_add(j.value));
 
         let result = i - j;
         assert!(result.is_constant());
-        assert!(result.value == i.value.overflowing_sub(j.value).0);
+        assert!(result.value == i.value.wrapping_sub(j.value));
         
         let result = i * j;
         assert!(result.is_constant());
-        assert!(result.value == i.value.overflowing_mul(j.value).0);
+        assert!(result.value == i.value.wrapping_mul(j.value));
         
         let result = i & j;
         assert!(result.is_constant());
@@ -313,17 +313,17 @@ pub fn track_varied_bits() {
         let b = new();
         let result = a + b;
         for _ in 0..1000 {
-            let number = gen(a).overflowing_add(gen(b)).0;
+            let number = gen(a).wrapping_add(gen(b));
             assert!(result.contains(number));
         }
         let result = a - b;
         for _ in 0..1000 {
-            let number = gen(a).overflowing_sub(gen(b)).0;
+            let number = gen(a).wrapping_sub(gen(b));
             assert!(result.contains(number));
         }
         let result = a * b;
         for _ in 0..1000 {
-            let number = gen(a).overflowing_mul(gen(b)).0;
+            let number = gen(a).wrapping_mul(gen(b));
             assert!(result.contains(number));
         }
         if let Some(result) = a.intersects(b) {
