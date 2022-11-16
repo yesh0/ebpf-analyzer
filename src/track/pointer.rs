@@ -1,12 +1,8 @@
-use core::{
-    cell::RefCell,
-    ops::{AddAssign, Sub, SubAssign},
-};
+use core::ops::{AddAssign, Sub, SubAssign};
 
-use alloc::rc::Rc;
 use bitflags::bitflags;
 
-use super::{scalar::Scalar, TrackError, TrackedValue, pointees::PointedValue};
+use super::{pointees::Pointee, scalar::Scalar, TrackError, TrackedValue};
 
 bitflags! {
     /// Attributes of the pointer
@@ -31,9 +27,6 @@ bitflags! {
     }
 }
 
-/// Reference to a memory region
-pub type Pointee = Rc<RefCell<dyn PointedValue>>;
-
 /// A generic pointer, off-loading all the access checking work to [PointedValue].
 #[derive(Clone)]
 pub struct Pointer {
@@ -45,6 +38,9 @@ pub struct Pointer {
 impl Pointer {
     pub fn non_null(&self) -> bool {
         self.attributes.contains(PointerAttributes::NON_NULL)
+    }
+    pub fn set_non_null(&mut self) {
+        self.attributes.set(PointerAttributes::NON_NULL, true)
     }
     pub fn is_readable(&self) -> bool {
         self.attributes.contains(PointerAttributes::READABLE)
@@ -88,8 +84,16 @@ impl Pointer {
         }
     }
 
-    pub fn is_pointing_to(&self, region: Rc<RefCell<dyn PointedValue>>) -> bool {
-        self.pointee.as_ptr() == region.as_ptr()
+    pub fn is_pointing_to(&self, region: usize) -> bool {
+        self.get_pointing_to() == region
+    }
+
+    pub fn get_pointing_to(&self) -> usize {
+        self.pointee.borrow().get_id()
+    }
+
+    pub fn redirect(&mut self, region: Pointee) {
+        self.pointee = region
     }
 }
 

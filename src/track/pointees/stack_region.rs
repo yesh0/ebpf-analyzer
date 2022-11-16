@@ -1,4 +1,6 @@
-use alloc::vec::Vec;
+use core::cell::RefCell;
+
+use alloc::{vec::Vec, rc::Rc};
 use ebpf_consts::STACK_SIZE;
 
 use crate::track::{
@@ -6,7 +8,7 @@ use crate::track::{
     TrackError, TrackedValue,
 };
 
-use super::{is_access_in_range, PointedValue};
+use super::{is_access_in_range, MemoryRegion, SafeClone};
 
 const BIT_MAP_BYTES: usize = STACK_SIZE / 8;
 
@@ -51,7 +53,9 @@ enum StackSlot {
 /// - `index`: `[0, 64)`: Slot index, counted backwards since we allocate them lazily
 ///   (that is, `index = 0` is where `offset = 504`, and for `index = 63`, `offset = 0`)
 /// - `fp`: Frame pointer (`offset = 512`)
+#[derive(Clone)]
 pub struct StackRegion {
+    id: usize,
     /// The values
     ///
     /// The highest `u64` on the stack is the first value.
@@ -65,6 +69,7 @@ pub struct StackRegion {
 impl StackRegion {
     pub fn new() -> StackRegion {
         StackRegion {
+            id: 0,
             map: [0; BIT_MAP_BYTES],
             values: Vec::new(),
         }
@@ -136,7 +141,7 @@ impl StackRegion {
     }
 }
 
-impl PointedValue for StackRegion {
+impl MemoryRegion for StackRegion {
     fn get(&mut self, offset: &Scalar, size: u8) -> Result<TrackedValue, TrackError> {
         let (start, end) = is_access_in_range(offset, size, STACK_SIZE)?;
         if self.is_readable(start, end) {
@@ -248,6 +253,28 @@ impl PointedValue for StackRegion {
         } else {
             // Currently only aligned access is permitted
             Err(TrackError::PointerOffsetMisaligned)
+        }
+    }
+}
+
+impl SafeClone for StackRegion {
+    fn get_id(&self) -> usize {
+        self.id
+    }
+
+    fn set_id(&mut self, id: usize) {
+        self.id = id
+    }
+
+    fn safe_clone(&self) -> super::Pointee {
+        Rc::new(RefCell::new(self.clone()))
+    }
+
+    fn redirects(&mut self, mapper: &dyn Fn(usize) -> super::Pointee) {
+        for ele in &mut self.values {
+            if let StackSlot::Value64(TrackedValue::Pointer(p)) = ele {
+                p.redirect(mapper(p.get_pointing_to()));
+            }
         }
     }
 }

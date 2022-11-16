@@ -79,20 +79,13 @@ impl<Int: RangeItem> RangePair<Int> {
             // self.any >= self.min > rhs.max >= rhs.any
             ComparisonResult::Never
         } else {
-            let intersection = self.intersects(rhs);
             // Computing self > rhs
+            // r2.min < r1.max, so overflow impossible
             let (mut r1, mut r2) = (self.clone(), rhs.clone());
-            r1.min = if intersection.min == r2.min {
-                intersection.min.add(Int::one())
-            } else {
-                intersection.min
-            };
-            r2.max = if intersection.max == r1.max {
-                intersection.max.sub(Int::one())
-            } else {
-                intersection.max
-            };
-            // Computing self <= rhs is much easier
+            r1.min = r1.min.max(r2.min.add(Int::one()));
+            r2.max = r2.max.min(r1.max.sub(Int::one()));
+            // Computing self <= rhs is simpler
+            let intersection = self.intersects(rhs);
             self.max = intersection.max;
             rhs.min = intersection.min;
             ComparisonResult::Perhaps((r1, r2))

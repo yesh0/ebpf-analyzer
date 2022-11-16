@@ -1,8 +1,10 @@
-use alloc::vec::Vec;
+use core::cell::RefCell;
+
+use alloc::{vec::Vec, rc::Rc};
 
 use crate::track::{pointer::Pointer, scalar::Scalar, TrackError, TrackedValue};
 
-use super::{is_access_in_range, PointedValue};
+use super::{is_access_in_range, MemoryRegion, SafeClone, Pointee};
 
 /// A memory region of a struct instance
 ///
@@ -24,7 +26,9 @@ use super::{is_access_in_range, PointedValue};
 ///
 /// Currently, it represents a struct known at compile time,
 /// and requires a `'static` slice representing its structure.
+#[derive(Clone)]
 pub struct StructRegion {
+    id: usize,
     pointers: Vec<Pointer>,
     map: &'static [i8],
 }
@@ -32,6 +36,7 @@ pub struct StructRegion {
 impl StructRegion {
     pub fn new(pointers: Vec<Pointer>, region_map: &'static [i8]) -> StructRegion {
         StructRegion {
+            id: 0,
             pointers,
             map: region_map,
         }
@@ -46,7 +51,7 @@ impl StructRegion {
     }
 }
 
-impl PointedValue for StructRegion {
+impl MemoryRegion for StructRegion {
     fn get(&mut self, offset: &Scalar, size: u8) -> Result<TrackedValue, TrackError> {
         let (start, end) = is_access_in_range(offset, size, self.map.len())?;
         if self.map[start] > 0 {
@@ -84,6 +89,26 @@ impl PointedValue for StructRegion {
             }
         }
         Ok(())
+    }
+}
+
+impl SafeClone for StructRegion {
+    fn get_id(&self) -> usize {
+        self.id
+    }
+
+    fn set_id(&mut self, id: usize) {
+        self.id = id
+    }
+
+    fn safe_clone(&self) -> Pointee {
+        Rc::new(RefCell::new(self.clone()))
+    }
+
+    fn redirects(&mut self, mapper: &dyn Fn(usize) -> Pointee) {
+        for p in &mut self.pointers {
+            p.redirect(mapper(p.get_pointing_to()));
+        }
     }
 }
 
@@ -188,6 +213,7 @@ fn assert_err_after(region: &mut StructRegion, offset: u64, size: u8) {
 #[test]
 pub fn test_pointer() {
     let instance = EmptyRegion::instance();
+    instance.borrow_mut().set_id(1);
     let mut region = StructRegion::new(
         alloc::vec![
             Pointer::new(PointerAttributes::empty(), instance.clone()),
@@ -205,7 +231,7 @@ pub fn test_pointer() {
     assert_is_only_ok_at_size(&mut region, 20, 4, true);
 
     match region.get(&Scalar::constant64(0), 4) {
-        Ok(TrackedValue::Pointer(pointer)) => pointer.is_pointing_to(instance),
+        Ok(TrackedValue::Pointer(pointer)) => pointer.is_pointing_to(1),
         _ => panic!(),
     };
 }
