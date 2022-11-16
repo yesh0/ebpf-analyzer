@@ -22,6 +22,10 @@ impl NumBits {
         self.value
     }
 
+    pub fn mask(self) -> u64 {
+        self.mask
+    }
+
     pub fn min(self) -> u64 {
         self.value
     }

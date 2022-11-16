@@ -2,7 +2,7 @@ use std::num::Wrapping;
 
 use ebpf_analyzer::vm::{
     run,
-    vm::{UncheckedVm, Vm, NoOpTracker},
+    vm::{UncheckedVm, Vm}, context::NoOpContext,
 };
 use ebpf_consts::{
     BPF_ADD, BPF_ALU, BPF_ALU64, BPF_DIV, BPF_K, BPF_MOD, BPF_MUL, BPF_SUB, BPF_X,
@@ -103,7 +103,7 @@ pub fn test_bitwise() {
 
     assert_biop(BPF_ALU64 | BPF_RSH | BPF_K, 0x100000000, 32, 1);
     assert_biop(BPF_ALU64 | BPF_LSH | BPF_K, 1, 32, 0x100000000);
-    assert_biop(BPF_ALU | BPF_ARSH | BPF_K, 0xF0000000, 28, 0xFFFFFFFFFFFFFFFF);
+    assert_biop(BPF_ALU | BPF_ARSH | BPF_K, 0xF0000000, 28, 0xFFFFFFFF);
     assert_biop(BPF_ALU64 | BPF_ARSH | BPF_K, 0xF000000000000000, 28, 0xFFFFFFFF00000000);
 
     let number = 0xCAFEBABEDEADBEEFu64;
@@ -119,17 +119,17 @@ pub fn assert_biop(op: u8, dst_v: u64, src_v: u64, result: u64) {
     let mut vm = UncheckedVm::<Wrapping<u64>>::new();
     assert!(vm.is_valid());
     let dst = (WRITABLE_REGISTER_COUNT - 2) as u64;
-    vm.set_reg(dst as u8, Wrapping(dst_v));
+    *vm.reg(dst as u8) = Wrapping(dst_v);
     let c = if (BPF_X & op) == 0 || op == (BPF_ALU | BPF_END | BPF_TO_BE) {
         op as u64 | (dst << 8) | (src_v << 32)
     } else {
         let src = (WRITABLE_REGISTER_COUNT - 1) as u64;
-        vm.set_reg(src as u8, Wrapping(src_v));
+        *vm.reg(src as u8) = Wrapping(src_v);
         op as u64 | (src << 12) | (dst << 8)
     };
     let code = vec![c, 0];
-    run(&code, &mut vm, &mut NoOpTracker{});
-    assert_eq!(vm.get_reg(dst as u8).0, result);
+    run(&code, &mut vm, &mut NoOpContext{});
+    assert_eq!(vm.reg(dst as u8).0, result);
     assert!(!vm.is_valid());
     assert_eq!(*vm.pc(), 1);
 }

@@ -2,7 +2,7 @@ use std::num::Wrapping;
 
 use ebpf_analyzer::vm::{
     run,
-    vm::{UncheckedVm, Vm, NoOpTracker},
+    vm::{UncheckedVm, Vm}, context::NoOpContext,
 };
 use ebpf_consts::*;
 
@@ -62,12 +62,12 @@ pub fn assert_jumps(op: u8, dst_v: u64, src_v: u64, jumps: bool) {
     assert!(vm.is_valid());
 
     let dst = (WRITABLE_REGISTER_COUNT - 2) as u64;
-    vm.set_reg(dst as u8, Wrapping(dst_v));
+    *vm.reg(dst as u8) = Wrapping(dst_v);
     let c = if (op & BPF_X) == 0 {
         op as u64 | (dst << 8) | (src_v << 32) | (1u64 << 16)
     } else {
         let src = (WRITABLE_REGISTER_COUNT - 1) as u64;
-        vm.set_reg(src as u8, Wrapping(src_v));
+        *vm.reg(src as u8) = Wrapping(src_v);
         op as u64 | (dst << 8) | (src << 12) | (1u64 << 16)
     };
 
@@ -76,8 +76,8 @@ pub fn assert_jumps(op: u8, dst_v: u64, src_v: u64, jumps: bool) {
         (BPF_ALU64 | BPF_MOV | BPF_K) as u64 | (NUMBER << 32),
         0,
     ];
-    run(&code, &mut vm, &mut NoOpTracker{});
-    assert_eq!(vm.get_reg(0).0, if jumps { 0 } else { NUMBER });
+    run(&code, &mut vm, &mut NoOpContext{});
+    assert_eq!(vm.reg(0).0, if jumps { 0 } else { NUMBER });
     if op != BPF_JMP | BPF_EXIT {
         assert!(!vm.is_valid());
         assert_eq!(*vm.pc(), 2);

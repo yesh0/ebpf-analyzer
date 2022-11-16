@@ -62,12 +62,18 @@ impl Scalar {
         self.urange32.mark_as_known(value);
     }
 
-    fn mark_as_unknown(&mut self) {
+    pub fn mark_as_unknown(&mut self) {
         self.irange.mark_as_unknown();
         self.irange32.mark_as_unknown();
         self.urange.mark_as_unknown();
         self.urange32.mark_as_unknown();
         self.bits = NumBits::unknown();
+    }
+
+    pub fn mark_upper_half_unknown(&mut self) {
+        self.irange.mark_as_unknown();
+        self.urange.mark_as_unknown();
+        self.bits = NumBits::pruned(self.bits.mask() | 0xFFFF_FFFF_0000_0000, self.bits.value())
     }
 
     /// Returns `None` if the state invalid, or `Some(true_if_constant)`

@@ -1,19 +1,22 @@
 //! Implements a generic interpreter and a tiny VM.
 
+pub mod context;
 pub mod value;
 pub mod vm;
-
-use core::cmp::Ordering::*;
 
 use ebpf_consts::*;
 use ebpf_macros::opcode_match;
 
-use crate::spec::Instruction;
+use crate::{spec::Instruction, vm::context::Fork};
 
-use self::{value::VmValue, vm::{Vm, BranchTracker}};
+use self::{context::VmContext, value::VmValue, vm::Vm};
 
 /// Runs (or, interprets) the code on the given VM
-pub fn run<Value: VmValue, M: Vm<Value>, T: BranchTracker>(code: &[u64], vm: &mut M, tracker: &mut T) {
+pub fn run<Value: VmValue, M: Vm<Value>, C: VmContext<Value, M>>(
+    code: &[u64],
+    vm: &mut M,
+    context: &mut C,
+) {
     let mut pc = *vm.pc();
     while vm.is_valid() {
         let insn = Instruction::from_raw(code[pc]);
@@ -25,72 +28,121 @@ pub fn run<Value: VmValue, M: Vm<Value>, T: BranchTracker>(code: &[u64], vm: &mu
             [[BPF_ALU: ALU32, BPF_ALU64: ALU64], [BPF_X: X, BPF_K: K],
              [
                 // Algebraic
-                BPF_ADD: add,
-                BPF_SUB: sub,
-                BPF_MUL: mul,
-                BPF_DIV: div,
-                BPF_MOD: rem,
+                BPF_ADD: add_assign,
+                BPF_SUB: sub_assign,
+                BPF_MUL: mul_assign,
+                BPF_DIV: div_assign,
+                BPF_MOD: rem_assign,
                 // Bitwise
-                BPF_AND: bitand,
-                BPF_OR : bitor,
-                BPF_XOR: bitxor,
-                BPF_LSH: l_shift,
-                BPF_RSH: r_shift,
-                BPF_ARSH: signed_shr,
-                // Misc
-                BPF_MOV: mov,
+                BPF_AND: bitand_assign,
+                BPF_OR : bitor_assign,
+                BPF_XOR: bitxor_assign,
              ]
             ] => {
-                // Gettings the src operant
-                #?((K)) let src = Value::constant32(insn.imm);         ##
-                #?((X)) let src = vm.get_reg(insn.src_reg()).clone();  ##
-                #?((ALU32))
-                    let src = src.cast_u32();
-                ##
-
                 // Gettings the dst operant
                 let dst_r = insn.dst_reg();
-                #?((__mov__))
-                    let dst = vm.get_reg(dst_r).clone();
-                    #?((ALU32))
-                        #?((signed_shr))
-                            let dst = dst.cast_i32();
-                        ##
-                        #?((__signed_shr__))
-                            let dst = dst.cast_u32();
-                        ##
-                    ##
+                // Gettings the src operant
+                #?((K))
+                    let src = &mut Value::constantu32(insn.imm as u32);
+                    let dst = vm.reg(dst_r);
+                ##
+                #?((X))
+                    let (dst, src) = vm.unsafe_dst_src(dst_r, insn.src_reg());
+                ##
+                #?((ALU32))
+                    let src = &src.lower_half();
                 ##
 
-                #?((div)|(rem))
-                    if src == Value::constant32(0) {
-                        vm.invalidate();
+                #?((ALU32))
+                    dst.lower_half_assign();
+                ##
+
+                #?((div_assign,K)|(rem_assign,K))
+                    if insn.imm == 0 {
+                        vm.invalidate("Div by 0");
                         break;
                     }
                 ##
 
-                #?((mov))
-                    let result = src;
+                dst.#=2(src);
+                #?((ALU32))
+                    dst.lower_half_assign();
                 ##
-                #?((__mov__))
-                    let result = dst.#=2(src);
+                vm.update_reg(dst_r);
+            }
+            // BPF_ALU_MOV: Sign extending for BPF_K
+            [[BPF_ALU: ALU32, BPF_ALU64: ALU64], [BPF_X: X, BPF_K: K],
+             [BPF_MOV: mov]
+            ] => {
+                let dst_r = insn.dst_reg();
+                #?((K))
+                    #?((ALU32))
+                        let src = &mut Value::constantu32(insn.imm as u32);
+                    ##
+                    #?((ALU64))
+                        let src = &mut Value::constanti32(insn.imm);
+                    ##
+                    let dst = vm.reg(dst_r);
+                ##
+                #?((X))
+                    let (dst, src) = vm.unsafe_dst_src(dst_r, insn.src_reg());
                 ##
 
-                vm.set_reg(dst_r, result);
+                *dst = src.clone();
+
+                #?((ALU32))
+                    dst.lower_half_assign();
+                ##
+                vm.update_reg(dst_r);
+            }
+            // Shifts: Width aware
+            [[BPF_ALU: ALU32, BPF_ALU64: ALU64], [BPF_X: X, BPF_K: K],
+             [
+                BPF_LSH: l_shift,
+                BPF_RSH: r_shift,
+                BPF_ARSH: signed_shr
+             ]
+            ] => {
+                // Gettings the dst operant
+                let dst_r = insn.dst_reg();
+                // Gettings the src operant
+                #?((K))
+                    let src = &mut Value::constantu32(insn.imm as u32);
+                    let dst = vm.reg(dst_r);
+                ##
+                #?((X))
+                    let (dst, src) = vm.unsafe_dst_src(dst_r, insn.src_reg());
+                ##
+                #?((ALU32))
+                    let width = 32;
+                ##
+                #?((ALU64))
+                    let width = 64;
+                ##
+
+                #?((ALU32))
+                    dst.lower_half_assign();
+                ##
+
+                dst.#=2(src, width);
+                #?((ALU32))
+                    dst.lower_half_assign();
+                ##
+                vm.update_reg(dst_r);
             }
             // ALU / ALU64: Unary operators
             [[BPF_ALU: ALU32, BPF_ALU64: ALU64], [BPF_K: K],
              [
-                BPF_NEG: signed_neg,
+                BPF_NEG: neg_assign,
              ]
             ] => {
                 let dst_r = insn.dst_reg();
-                let dst = vm.get_reg(dst_r).clone();
+                let dst = vm.reg(dst_r);
                 #?((ALU32))
-                    let dst = dst.cast_i32();
+                    dst.lower_half_assign();
                 ##
-                let result = dst.#=2();
-                vm.set_reg(dst_r, result);
+                dst.#=2();
+                vm.update_reg(dst_r);
             }
             // ALU / ALU64: Byte swap
             [[BPF_ALU: ALU32], [BPF_END: END],
@@ -100,88 +152,76 @@ pub fn run<Value: VmValue, M: Vm<Value>, T: BranchTracker>(code: &[u64], vm: &mu
              ]
             ] => {
                 let dst_r = insn.dst_reg();
-                let dst = vm.get_reg(dst_r).clone();
-                let result = dst.#=2(insn.imm);
-                vm.set_reg(dst_r, result);
+                let dst = vm.reg(dst_r);
+                dst.#=2(insn.imm);
+                vm.update_reg(dst_r);
             }
             // JMP32 / JMP: Conditional
             [[BPF_JMP32: JMP32, BPF_JMP: JMP64], [BPF_X: X, BPF_K: K],
              [
                 // Unsigned
-                BPF_JEQ: "[Equal]",
-                BPF_JNE: "[Greater, Less]",
-                BPF_JGT: "[Greater]",
-                BPF_JGE: "[Greater, Equal]",
-                BPF_JLT: "[Less]",
-                BPF_JLE: "[Less, Equal]",
-                // Signed
-                BPF_JSGT: "[Greater]",
-                BPF_JSGE: "[Greater, Equal]",
-                BPF_JSLT: "[Less]",
-                BPF_JSLE: "[Less, Equal]",
+                BPF_JEQ: jeq,
+                BPF_JLT: jlt,
+                BPF_JLE: jle,
+                BPF_JSLT: jslt,
+                BPF_JSLE: jsle,
+                // Inverse
+                BPF_JNE: jeq,
+                BPF_JGT: jle,
+                BPF_JGE: jlt,
+                BPF_JSGT: jsle,
+                BPF_JSGE: jslt,
                 // Misc
-                BPF_JSET: "[Less, Greater]",
+                BPF_JSET: jset,
              ]
             ] => {
-                let dst = vm.get_reg(insn.dst_reg()).clone();
-                #?((K)) let src = Value::constant32(insn.imm);         ##
-                #?((X)) let src = vm.get_reg(insn.src_reg()).clone();  ##
-
-                // Casting
+                let ptr = vm as *const M as *mut M;
                 #?((JMP32))
+                    let width = 32;
+                ##
+                #?((JMP64))
+                    let width = 64;
+                ##
+
+                let (dst_r, src_r) = (insn.dst_reg(), insn.src_reg());
+                #?((K))
+                    let _ = src_r;
+                    let src_r = -1i8;
                     #?((BPF_JSGT)|(BPF_JSGE)|(BPF_JSLT)|(BPF_JSLE))
-                        let dst = dst.cast_i32();
-                        let src = src.cast_i32();
+                        let src = &mut Value::constanti32(insn.imm);
                     ##
                     #?((__BPF_JSGT__,__BPF_JSGE__,__BPF_JSLT__,__BPF_JSLE__))
-                        let dst = dst.cast_u32();
-                        let src = src.cast_u32();
+                        let src = &mut Value::constantu32(insn.imm as u32);
                     ##
+                    let dst = vm.reg(dst_r);
                 ##
-
-                // Comparison
-                #?((__BPF_JSGT__,__BPF_JSGE__,__BPF_JSLT__,__BPF_JSLE__,__BPF_JSET__))
-                    let result = dst.partial_cmp(&src);
+                #?((X))
+                    let (dst, src) = vm.unsafe_two_regs(dst_r, src_r);
+                    let src_r = src_r as i8;
                 ##
-                #?((BPF_JSGT)|(BPF_JSGE)|(BPF_JSLT)|(BPF_JSLE))
-                    let result = dst.signed_partial_cmp(&src);
+                let fork = Fork { target: pc.wrapping_add_signed(insn.off as isize), fall_through: pc };
+                #?((BPF_JNE)|(BPF_JGT)|(BPF_JGE)|(BPF_JSGT)|(BPF_JSGE))
+                    let fork = Fork { target: fork.fall_through, fall_through: fork.target };
                 ##
-                #?((BPF_JSET))
-                    let result = dst.bitand(src).partial_cmp(&Value::constant32(0));
-                ##
-
-                let allowed = #=2;
-                let target = if insn.off >= 0 {
-                    pc + (insn.off as usize)
-                } else {
-                    pc - ((-insn.off) as usize)
-                };
-                if tracker.conditional_jump(&result, &allowed, target) {
-                    break;
-                }
-                if let Some(cmp) = result {
-                    if allowed.contains(&cmp) {
-                        pc = target;
-                    }
-                } else {
-                    vm.invalidate();
+                let vm_mut = unsafe { ptr.as_mut().unwrap() };
+                let result = vm_mut.#=2(
+                    (dst_r as i8, dst),
+                    (src_r, src),
+                    fork,
+                    width
+                );
+                pc = *vm_mut.pc();
+                if let Some(branch) = result {
+                    context.add_pending_branch(branch);
                 }
             }
             // BPF_JA: Unconditional jump
             [[BPF_JMP: JMP], [BPF_JA: JA]] => {
-                if insn.off >= 0 {
-                    pc += insn.off as usize;
-                } else {
-                    pc -= (-insn.off) as usize;
-                }
-                if tracker.jump_to(pc) {
-                    break;
-                }
+                pc = pc.wrapping_add_signed(insn.off as isize);
             }
             // BPF_EXIT: Exits
             [[BPF_JMP: JMP], [BPF_EXIT: EXIT]] => {
-                tracker.exit();
-                break;
+                return;
             }
             // TODO: BPF_CALL
             // Store / load
@@ -195,34 +235,35 @@ pub fn run<Value: VmValue, M: Vm<Value>, T: BranchTracker>(code: &[u64], vm: &mu
             ] => {
                 const SIZE: usize = #=2;
                 #?((LDX))
-                    let src = vm.get_reg(insn.src_reg()).clone();
+                    let src = vm.ro_reg(insn.src_reg());
                     if let Some(value) = unsafe { src.get_at(insn.off, SIZE) } {
-                        vm.set_reg(insn.dst_reg(), value);
+                        *vm.reg(insn.dst_reg()) = value;
                     } else {
-                        vm.invalidate();
+                        vm.invalidate("Illegal access");
                     }
                 ##
                 #?((STX))
-                    let dst = vm.get_reg(insn.dst_reg()).clone();
-                    let src = vm.get_reg(insn.src_reg()).clone();
+                    let dst = vm.ro_reg(insn.dst_reg());
+                    let src = vm.ro_reg(insn.src_reg());
                     unsafe {
                         if !dst.set_at(insn.off, SIZE, src) {
-                            vm.invalidate();
+                            vm.invalidate("Illegal access");
                         }
                     }
                 ##
                 #?((ST))
-                    let dst = vm.get_reg(insn.dst_reg()).clone();
+                    let dst = vm.ro_reg(insn.dst_reg());
                     unsafe {
-                        if !dst.set_at(insn.off, SIZE, Value::constant64(insn.imm as u32 as u64)) {
-                            vm.invalidate();
+                        if !dst.set_at(insn.off, SIZE, &Value::constant64(insn.imm as u32 as u64)) {
+                            vm.invalidate("Illegal access");
                         }
                     }
                 ##
             }
             [[BPF_LD: LD], [BPF_IMM: IMM], [BPF_DW: DW]] => {
                 let value = insn.imm as u32 as u64 | (code[pc] & 0xFFFF_FFFF_0000_0000);
-                vm.set_reg(insn.dst_reg(), Value::constant64(value));
+                *vm.reg(insn.dst_reg()) = Value::constant64(value);
+                vm.update_reg(insn.dst_reg());
                 pc += 1;
             }
             #[cfg(feature = "atomic32")]
@@ -234,7 +275,7 @@ pub fn run<Value: VmValue, M: Vm<Value>, T: BranchTracker>(code: &[u64], vm: &mu
                 run_atomic(insn, vm, 64);
             }
             _ => {
-                vm.invalidate();
+                vm.invalidate("Unrecognized opcode");
                 break;
             }
         };
@@ -254,41 +295,37 @@ fn run_atomic<Value: VmValue, M: Vm<Value>>(insn: Instruction, vm: &mut M, size:
             BPF_ATOMIC_XOR: "fetch_xor",
          ]
         ] => {
-            let src_r =  insn.src_reg();
-            let dst = vm.get_reg(insn.dst_reg()).clone();
-            let src = vm.get_reg(src_r).clone();
+            let src_r = insn.src_reg();
+            let (dst, src) = vm.unsafe_two_ro_regs(insn.dst_reg(), src_r);
             let result = dst.#=1(insn.off, src, size);
             if let None = result {
-                vm.invalidate();
+                vm.invalidate("Atomic failed");
                 return;
             }
             #?((FETCH))
                 if let Some(old) = result {
-                    vm.set_reg(src_r, old);
+                    *vm.reg(src_r) = old;
                 }
             ##
         }
         [[BPF_ATOMIC_FETCH: FETCH], [BPF_ATOMIC_XCHG: XCHG]] => {
             let src_r =  insn.src_reg();
-            let dst = vm.get_reg(insn.dst_reg()).clone();
-            let src = vm.get_reg(src_r).clone();
+            let (src, dst) = vm.unsafe_dst_src(src_r, insn.dst_reg());
             if let Some(old) = dst.swap(insn.off, src, size) {
-                vm.set_reg(src_r, old);
+                *vm.reg(src_r) = old;
             } else {
-                vm.invalidate();
+                vm.invalidate("Atomic failed");
             }
         }
         [[BPF_ATOMIC_FETCH: FETCH], [BPF_ATOMIC_CMPXCHG: CMPXCHG]] => {
-            let src_r =  insn.src_reg();
-            let dst = vm.get_reg(insn.dst_reg()).clone();
-            let src = vm.get_reg(src_r).clone();
-            let expected = vm.get_reg(0).clone();
+            let src_r = insn.src_reg();
+            let (dst, src, expected) = vm.unsafe_three_regs(insn.dst_reg(), src_r, 0);
             if let Some(old) = dst.compare_exchange(insn.off, expected, src, size) {
-                vm.set_reg(0, old);
+                *vm.reg(0) = old;
             } else {
-                vm.invalidate();
+                vm.invalidate("Atomic failed");
             }
         }
-        _ => vm.invalidate(),
+        _ => vm.invalidate("Atomic failed"),
     };
 }
