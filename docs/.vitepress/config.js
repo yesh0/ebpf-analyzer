@@ -54,6 +54,7 @@ function sidebarGuide() {
       text: 'Kernel Implementation',
       items: [
         { text: 'Syscall Entrance', link: '/impl/syscall' },
+        { text: 'Interpreter', link: '/impl/interpreter' },
       ],
     },
     {

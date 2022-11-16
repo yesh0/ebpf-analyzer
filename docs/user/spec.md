@@ -44,6 +44,9 @@ imm64 = insn1.imm32 | (insn2.imm32 << 32);
 
 ## Instructions
 
+You might want to see how each instruction is actually executed by the verifier.
+[Here](../impl/interpreter.md) is an incomplete list of them.
+
 ### Arithmetic and jumps
 
 - `BPF_NEG`: No, this opcode is not a bitwise-not as the spec states: `dst = ~src`.
