@@ -3,7 +3,7 @@ use core::{
     ops::{AddAssign, MulAssign, SubAssign},
 };
 
-use num_traits::PrimInt;
+use num_traits::{PrimInt, ToPrimitive};
 
 use super::comparable::ComparisonResult;
 
@@ -92,6 +92,26 @@ impl<Int: RangeItem> RangePair<Int> {
         }
     }
 }
+
+pub trait SyncFromUpper<U: RangeItem> {
+    fn sync_from(&mut self, upper: &RangePair<U>);
+}
+
+macro_rules! impl_sync_from_upper {
+    ($upper:ty, $self:ty, $to:ident) => {
+        impl SyncFromUpper<$upper> for RangePair<$self> {
+            fn sync_from(&mut self, upper: &RangePair<$upper>) {
+                if let (Some(min), Some(max)) = (upper.min.$to(), upper.max.$to()) {
+                    self.min = min;
+                    self.max = max;
+                }
+            }
+        }
+    };
+}
+
+impl_sync_from_upper!(u64, u32, to_u32);
+impl_sync_from_upper!(i64, i32, to_i32);
 
 impl<Int: RangeItem> AddAssign<&Self> for RangePair<Int> {
     /// Sets the current range to a new range such that

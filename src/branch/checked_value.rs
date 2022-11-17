@@ -309,7 +309,7 @@ impl Debug for CheckedValue {
         match &self.0 {
             Some(TrackedValue::Pointer(p)) => f.write_fmt(format_args!("{:?}", p)),
             Some(TrackedValue::Scalar(s)) => f.write_fmt(format_args!("{:?}", s)),
-            None => f.write_fmt(format_args!("Invalid")),
+            None => f.write_str("_"),
         }
     }
 }

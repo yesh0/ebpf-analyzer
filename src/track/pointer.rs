@@ -5,7 +5,7 @@ use core::{
 
 use bitflags::bitflags;
 
-use super::{pointees::Pointee, scalar::Scalar, TrackError, TrackedValue};
+use super::{pointees::{Pointee}, scalar::Scalar, TrackError, TrackedValue};
 
 bitflags! {
     /// Attributes of the pointer
@@ -96,7 +96,7 @@ impl Pointer {
     }
 
     pub fn redirect(&mut self, region: Pointee) {
-        self.pointee = region
+        self.pointee = region;
     }
 }
 
@@ -129,9 +129,10 @@ impl Sub<&Self> for &Pointer {
 
 impl Debug for Pointer {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("Pointer")
-            .field("attributes", &self.attributes)
-            .field("offset", &self.offset)
-            .finish()
+        f.write_fmt(format_args!(
+            "Pointer{{off:{:?},ptr:0x{:x}}}",
+            &self.offset,
+            &(self.pointee.as_ptr() as *const () as usize)
+        ))
     }
 }

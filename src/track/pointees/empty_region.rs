@@ -10,7 +10,7 @@ use super::{MemoryRegion, SafeClone, Pointee};
 ///
 /// Operations on this region are forbidden.
 /// One may use this struct to represent map pointers or resource descriptors.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct EmptyRegion(usize);
 
 impl EmptyRegion {

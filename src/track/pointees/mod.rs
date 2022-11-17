@@ -1,4 +1,4 @@
-use core::cell::RefCell;
+use core::{cell::RefCell, fmt::Debug};
 
 use alloc::rc::Rc;
 
@@ -24,8 +24,10 @@ pub trait SafeClone {
 }
 
 /// A memory region that checks memory access
-pub trait MemoryRegion: SafeClone {
+pub trait MemoryRegion: SafeClone + Debug {
+    // - `size`: in bytes
     fn get(&mut self, offset: &Scalar, size: u8) -> Result<TrackedValue, TrackError>;
+    // - `size`: in bytes
     fn set(&mut self, offset: &Scalar, size: u8, value: &TrackedValue) -> Result<(), TrackError>;
 }
 

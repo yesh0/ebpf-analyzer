@@ -5,7 +5,10 @@ use core::{
 
 use num_traits::{AsPrimitive, PrimInt};
 
-use super::{range::RangePair, tnum::NumBits};
+use super::{
+    range::{RangePair, SyncFromUpper},
+    tnum::NumBits,
+};
 
 /// A tracked scalar, recording known bits and possible values
 ///
@@ -227,12 +230,18 @@ impl Scalar {
         }
     }
 
+    fn sync_from_upper(&mut self) {
+        self.irange32.sync_from(&self.irange);
+        self.urange32.sync_from(&self.urange);
+    }
+
     /// Syncs between `iranges`, `uranges` and most importantly `bits`
     ///
     /// This function must be called to sync the sign bit info between
     /// `iranges` and `bits` after changes in the sign bit.
     pub(super) fn sync_bounds(&mut self) {
         self.narrow_bounds();
+        self.sync_from_upper();
         self.sync_sign_bounds();
         self.sync_bits();
         self.narrow_bounds();
@@ -620,13 +629,19 @@ impl Scalar {
 
 impl Debug for Scalar {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("Scalar")
-            .field("bits", &self.bits)
-            .field("irange", &self.irange)
-            .field("irange32", &self.irange32)
-            .field("urange", &self.urange)
-            .field("urange32", &self.urange32)
-            .finish()
+        if self.is_constant::<64>().unwrap_or(false) {
+            f.write_fmt(format_args!("Scalar=0x{:x}", self.bits.value()))
+        } else if self.bits.mask() == u64::MAX {
+            f.write_str("Scalar=unknown")
+        } else {
+            f.debug_struct("Scalar")
+                .field("bits", &self.bits)
+                .field("irange", &self.irange)
+                .field("irange32", &self.irange32)
+                .field("urange", &self.urange)
+                .field("urange32", &self.urange32)
+                .finish()
+        }
     }
 }
 

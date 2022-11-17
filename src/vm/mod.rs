@@ -196,9 +196,6 @@ pub fn run<Value: VmValue, M: Vm<Value>, C: VmContext<Value, M>>(
                 BPF_JSET: jset,
              ]
             ] => {
-                if !vm.ro_reg(10).is_valid() {
-                    *vm.pc() = pc;
-                }
                 #?((JMP32))
                     let width = 32;
                 ##

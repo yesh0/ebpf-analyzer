@@ -26,7 +26,7 @@ use super::{is_access_in_range, MemoryRegion, SafeClone, Pointee};
 ///
 /// Currently, it represents a struct known at compile time,
 /// and requires a `'static` slice representing its structure.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct StructRegion {
     id: usize,
     pointers: Vec<Pointer>,

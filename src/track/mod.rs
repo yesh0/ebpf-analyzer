@@ -9,7 +9,7 @@ pub mod pointees;
 pub mod comparable;
 
 /// A `Value` implementation
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum TrackedValue {
     /// Points, or any other special values
     Pointer(Pointer),

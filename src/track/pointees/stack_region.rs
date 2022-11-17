@@ -1,18 +1,15 @@
 use core::cell::RefCell;
 
-use alloc::{vec::Vec, rc::Rc};
+use alloc::{rc::Rc, vec::Vec};
 use ebpf_consts::STACK_SIZE;
 
-use crate::track::{
-    scalar::Scalar,
-    TrackError, TrackedValue,
-};
+use crate::track::{scalar::Scalar, TrackError, TrackedValue};
 
 use super::{is_access_in_range, MemoryRegion, SafeClone};
 
 const BIT_MAP_BYTES: usize = STACK_SIZE / 8;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 enum StackSlot {
     Value64(TrackedValue),
     Scalar32((Scalar, Scalar)),
@@ -53,7 +50,7 @@ enum StackSlot {
 /// - `index`: `[0, 64)`: Slot index, counted backwards since we allocate them lazily
 ///   (that is, `index = 0` is where `offset = 504`, and for `index = 63`, `offset = 0`)
 /// - `fp`: Frame pointer (`offset = 512`)
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct StackRegion {
     id: usize,
     /// The values
@@ -226,7 +223,7 @@ impl MemoryRegion for StackRegion {
                                     StackSlot::Scalar32((Scalar::unknown(), scalar.clone()))
                                 }
                             }
-                            StackSlot::Scalar32((lower, higher)) => {
+                            StackSlot::Scalar32((ref mut lower, ref mut higher)) => {
                                 if start % 8 == 0 {
                                     *lower = scalar.clone();
                                 } else {
@@ -267,7 +264,8 @@ impl SafeClone for StackRegion {
     }
 
     fn safe_clone(&self) -> super::Pointee {
-        Rc::new(RefCell::new(self.clone()))
+        let c = self.clone();
+        Rc::new(RefCell::new(c))
     }
 
     fn redirects(&mut self, mapper: &dyn Fn(usize) -> super::Pointee) {
@@ -280,10 +278,35 @@ impl SafeClone for StackRegion {
 }
 
 #[cfg(test)]
-use super::{super::pointer::{Pointer, PointerAttributes}, empty_region::EmptyRegion};
+use super::{
+    super::pointer::{Pointer, PointerAttributes},
+    empty_region::EmptyRegion,
+};
 
 #[cfg(test)]
 use rand::{thread_rng, Rng};
+
+#[test]
+pub fn test_clone() {
+    let mut stack = StackRegion::new();
+    let offset = Scalar::constant64(512 - 4);
+    assert!(stack
+        .set(
+            &offset,
+            4,
+            &TrackedValue::Scalar(Scalar::constant64(1))
+        )
+        .is_ok());
+    match stack.get(&offset, 4) {
+        Ok(TrackedValue::Scalar(s)) => assert!(s.value64().unwrap() == 1),
+        _ => panic!(),
+    };
+    let clone = stack.safe_clone();
+    match clone.borrow_mut().get(&offset, 4) {
+        Ok(TrackedValue::Scalar(s)) => assert!(s.value64().unwrap() == 1),
+        _ => panic!(),
+    };
+}
 
 #[test]
 pub fn test_stack_access() {
