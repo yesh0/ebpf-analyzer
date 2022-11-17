@@ -1,18 +1,20 @@
-use alloc::vec::Vec;
+use core::cell::RefCell;
+
+use alloc::{vec::Vec, rc::Rc};
 
 use crate::{
     blocks::{FunctionBlock, FunctionBlocks, IllegalStructure, TERMINAL_PSEUDO_BLOCK},
-    spec::IllegalInstruction,
+    spec::IllegalInstruction, branch::{context::BranchContext, vm::{BranchState, Branch}}, vm::{context::VmContext, run, vm::Vm},
 };
 
 pub struct Analyzer;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub enum VerificationError {
     IllegalStructure(IllegalStructure),
     IllegalInstruction(IllegalInstruction),
     IllegalGraph,
-    IllegalStateChange,
+    IllegalStateChange(Branch),
 }
 
 impl From<IllegalInstruction> for VerificationError {
@@ -61,10 +63,23 @@ impl Analyzer {
     }
 
     fn has_forbidden_state_change(
-        _code: &[u64],
-        _blocks: &FunctionBlocks,
+        code: &[u64],
+        blocks: &FunctionBlocks,
     ) -> Result<(), VerificationError> {
-        // todo!()
-        Ok(())
+        if blocks.len() != 1 {
+            Err(VerificationError::IllegalStructure(IllegalStructure::Empty))
+        } else {
+            let mut branches = BranchContext::new();
+            branches.add_pending_branch(Rc::new(RefCell::new(BranchState::new(Vec::new()))));
+            while let Some(branch) = branches.next() {
+                let mut vm = branch.borrow_mut();
+                run(code, &mut vm, &mut branches);
+                if !vm.is_valid() {
+                    drop(vm);
+                    return Err(VerificationError::IllegalStateChange(branch));
+                }
+            }
+            Ok(())
+        }
     }
 }

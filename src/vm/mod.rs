@@ -264,6 +264,8 @@ pub fn run<Value: VmValue, M: Vm<Value>, C: VmContext<Value, M>>(
                     } else {
                         vm.invalidate("Illegal access");
                     }
+                    vm.update_reg(insn.src_reg());
+                    vm.update_reg(insn.dst_reg());
                 ##
                 #?((STX))
                     let dst = vm.ro_reg(insn.dst_reg());
@@ -273,6 +275,8 @@ pub fn run<Value: VmValue, M: Vm<Value>, C: VmContext<Value, M>>(
                             vm.invalidate("Illegal access");
                         }
                     }
+                    vm.update_reg(insn.src_reg());
+                    vm.update_reg(insn.dst_reg());
                 ##
                 #?((ST))
                     let dst = vm.ro_reg(insn.dst_reg());
@@ -281,6 +285,7 @@ pub fn run<Value: VmValue, M: Vm<Value>, C: VmContext<Value, M>>(
                             vm.invalidate("Illegal access");
                         }
                     }
+                    vm.update_reg(insn.dst_reg());
                 ##
             }
             [[BPF_LD: LD], [BPF_IMM: IMM], [BPF_DW: DW]] => {
@@ -330,6 +335,7 @@ fn run_atomic<Value: VmValue, M: Vm<Value>>(insn: Instruction, vm: &mut RefMut<M
                     *vm.reg(src_r) = old;
                 }
             ##
+            vm.update_reg(insn.dst_reg());
             vm.update_reg(src_r);
         }
         [[BPF_ATOMIC_FETCH: FETCH], [BPF_ATOMIC_XCHG: XCHG]] => {
@@ -340,6 +346,7 @@ fn run_atomic<Value: VmValue, M: Vm<Value>>(insn: Instruction, vm: &mut RefMut<M
             } else {
                 vm.invalidate("Atomic failed");
             }
+            vm.update_reg(insn.dst_reg());
             vm.update_reg(src_r);
         }
         [[BPF_ATOMIC_FETCH: FETCH], [BPF_ATOMIC_CMPXCHG: CMPXCHG]] => {
@@ -350,6 +357,7 @@ fn run_atomic<Value: VmValue, M: Vm<Value>>(insn: Instruction, vm: &mut RefMut<M
             } else {
                 vm.invalidate("Atomic failed");
             }
+            vm.update_reg(insn.dst_reg());
             vm.update_reg(0);
             vm.update_reg(src_r);
         }

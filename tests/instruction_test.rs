@@ -48,7 +48,7 @@ fn validate_valid_blocks() {
 fn validate_unreachable_blocks() {
     let code = parse_llvm_dump(SIMPLE2);
     match Analyzer::analyze(&code) {
-        Ok(_) => panic!("Should contains unreachable blocks"),
-        Err(err) => assert!(err == VerificationError::IllegalGraph),
+        Err(VerificationError::IllegalGraph) => {},
+        _ => panic!("Should contains unreachable blocks"),
     }
 }

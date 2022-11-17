@@ -1,4 +1,7 @@
-use core::ops::{AddAssign, Sub, SubAssign};
+use core::{
+    fmt::Debug,
+    ops::{AddAssign, Sub, SubAssign},
+};
 
 use bitflags::bitflags;
 
@@ -121,5 +124,14 @@ impl Sub<&Self> for &Pointer {
             }
         }
         return None;
+    }
+}
+
+impl Debug for Pointer {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Pointer")
+            .field("attributes", &self.attributes)
+            .field("offset", &self.offset)
+            .finish()
     }
 }

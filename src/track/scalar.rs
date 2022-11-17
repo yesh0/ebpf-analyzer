@@ -1,4 +1,7 @@
-use core::ops::{AddAssign, BitAndAssign, BitOrAssign, BitXorAssign, MulAssign, SubAssign};
+use core::{
+    fmt::Debug,
+    ops::{AddAssign, BitAndAssign, BitOrAssign, BitXorAssign, MulAssign, SubAssign},
+};
 
 use num_traits::{AsPrimitive, PrimInt};
 
@@ -611,6 +614,18 @@ impl Scalar {
                     self.irange.contains(value.as_())
                 })
         }
+    }
+}
+
+impl Debug for Scalar {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Scalar")
+            .field("bits", &self.bits)
+            .field("irange", &self.irange)
+            .field("irange32", &self.irange32)
+            .field("urange", &self.urange)
+            .field("urange32", &self.urange32)
+            .finish()
     }
 }
 
