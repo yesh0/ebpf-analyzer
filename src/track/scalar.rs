@@ -369,6 +369,7 @@ impl Scalar {
         self.sync_bounds();
     }
 
+    /// Zeroes the upper half
     pub fn lower_half(&mut self) {
         self.bits = self.bits.lower_half();
         self.irange.mark_as_unknown();

@@ -22,3 +22,4 @@ num-traits = "0.2"
 
 [dev-dependencies]
 rand = "0.8"
+llvm-util = { path = "./crate/lldump" }

@@ -13,6 +13,7 @@ use ebpf_atomic::Atomic;
 pub trait Castable {
     fn lower_half(&self) -> Self;
     fn lower_half_assign(&mut self);
+    fn zero_upper_half_assign(&mut self);
 }
 
 impl Castable for u64 {
@@ -23,6 +24,10 @@ impl Castable for u64 {
     fn lower_half_assign(&mut self) {
         *self = self.lower_half();
     }
+
+    fn zero_upper_half_assign(&mut self) {
+        *self &= 0xFFFF_FFFF
+    }
 }
 
 impl Castable for Wrapping<u64> {
@@ -32,6 +37,10 @@ impl Castable for Wrapping<u64> {
 
     fn lower_half_assign(&mut self) {
         self.0.lower_half_assign()
+    }
+
+    fn zero_upper_half_assign(&mut self) {
+        self.0.zero_upper_half_assign()
     }
 }
 

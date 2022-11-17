@@ -86,9 +86,16 @@ impl Castable for CheckedValue {
 
     fn lower_half_assign(&mut self) {
         if let Some(TrackedValue::Scalar(ref mut s)) = self.0 {
-            s.lower_half();
             // By marking the upper half unknown, we allow JIT / interpreters to have undefined behavior.
             s.mark_upper_half_unknown();
+        } else {
+            self.invalidate();
+        }
+    }
+
+    fn zero_upper_half_assign(&mut self) {
+        if let Some(TrackedValue::Scalar(ref mut s)) = self.0 {
+            s.lower_half();
         } else {
             self.invalidate();
         }

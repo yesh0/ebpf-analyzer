@@ -112,7 +112,7 @@ pub fn run<Value: VmValue, M: Vm<Value>, C: VmContext<Value, M>>(
                 *dst = src.clone();
 
                 #?((ALU32))
-                    dst.lower_half_assign();
+                    dst.zero_upper_half_assign();
                 ##
                 vm.update_reg(dst_r);
             }

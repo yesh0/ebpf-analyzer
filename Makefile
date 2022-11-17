@@ -6,7 +6,10 @@ $(BPF_SOURCE): $(BPF_DIR)/%.c
 
 bpf-gen: $(addsuffix .txt, $(basename $(wildcard $(BPF_DIR)/*.c)))
 
+clean:
+	rm $(BPF_DIR)/*.txt
+
 test: bpf-gen
 	cargo test
 
-.PHONY: test
+.PHONY: test clean
