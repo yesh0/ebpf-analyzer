@@ -4,6 +4,8 @@ pub mod context;
 pub mod value;
 pub mod vm;
 
+use core::cell::RefMut;
+
 use ebpf_consts::*;
 use ebpf_macros::opcode_match;
 
@@ -11,10 +13,29 @@ use crate::{spec::Instruction, vm::context::Fork};
 
 use self::{context::VmContext, value::VmValue, vm::Vm};
 
+macro_rules! break_if_none {
+    ($value:expr) => {
+        if let Some(v) = $value {
+            v
+        } else {
+            break;
+        }
+    };
+}
+macro_rules! return_if_none {
+    ($value:expr) => {
+        if let Some(v) = $value {
+            v
+        } else {
+            return;
+        }
+    };
+}
+
 /// Runs (or, interprets) the code on the given VM
 pub fn run<Value: VmValue, M: Vm<Value>, C: VmContext<Value, M>>(
     code: &[u64],
-    vm: &mut M,
+    vm: &mut RefMut<M>,
     context: &mut C,
 ) {
     let mut pc = *vm.pc();
@@ -47,7 +68,7 @@ pub fn run<Value: VmValue, M: Vm<Value>, C: VmContext<Value, M>>(
                     let dst = vm.reg(dst_r);
                 ##
                 #?((X))
-                    let (dst, src) = vm.unsafe_dst_src(dst_r, insn.src_reg());
+                    let (dst, src) = break_if_none!(vm.two_regs(dst_r, insn.src_reg()));
                 ##
                 #?((ALU32))
                     let src = &src.lower_half();
@@ -85,7 +106,7 @@ pub fn run<Value: VmValue, M: Vm<Value>, C: VmContext<Value, M>>(
                     let dst = vm.reg(dst_r);
                 ##
                 #?((X))
-                    let (dst, src) = vm.unsafe_dst_src(dst_r, insn.src_reg());
+                    let (dst, src) = break_if_none!(vm.two_regs(dst_r, insn.src_reg()));
                 ##
 
                 *dst = src.clone();
@@ -111,7 +132,7 @@ pub fn run<Value: VmValue, M: Vm<Value>, C: VmContext<Value, M>>(
                     let dst = vm.reg(dst_r);
                 ##
                 #?((X))
-                    let (dst, src) = vm.unsafe_dst_src(dst_r, insn.src_reg());
+                    let (dst, src) = break_if_none!(vm.two_regs(dst_r, insn.src_reg()));
                 ##
                 #?((ALU32))
                     let width = 32;
@@ -175,7 +196,9 @@ pub fn run<Value: VmValue, M: Vm<Value>, C: VmContext<Value, M>>(
                 BPF_JSET: jset,
              ]
             ] => {
-                let ptr = vm as *const M as *mut M;
+                if !vm.ro_reg(10).is_valid() {
+                    *vm.pc() = pc;
+                }
                 #?((JMP32))
                     let width = 32;
                 ##
@@ -183,6 +206,7 @@ pub fn run<Value: VmValue, M: Vm<Value>, C: VmContext<Value, M>>(
                     let width = 64;
                 ##
 
+                let vm_bak = unsafe { (vm.dup() as *mut M).as_mut().unwrap() };
                 let (dst_r, src_r) = (insn.dst_reg(), insn.src_reg());
                 #?((K))
                     let _ = src_r;
@@ -196,21 +220,20 @@ pub fn run<Value: VmValue, M: Vm<Value>, C: VmContext<Value, M>>(
                     let dst = vm.reg(dst_r);
                 ##
                 #?((X))
-                    let (dst, src) = vm.unsafe_two_regs(dst_r, src_r);
+                    let (dst, src) = break_if_none!(vm.two_regs(dst_r, src_r));
                     let src_r = src_r as i8;
                 ##
                 let fork = Fork { target: pc.wrapping_add_signed(insn.off as isize), fall_through: pc };
                 #?((BPF_JNE)|(BPF_JGT)|(BPF_JGE)|(BPF_JSGT)|(BPF_JSGE))
                     let fork = Fork { target: fork.fall_through, fall_through: fork.target };
                 ##
-                let vm_mut = unsafe { ptr.as_mut().unwrap() };
-                let result = vm_mut.#=2(
+                let result = vm_bak.#=2(
                     (dst_r as i8, dst),
                     (src_r, src),
                     fork,
                     width
                 );
-                pc = *vm_mut.pc();
+                pc = *vm_bak.pc();
                 if let Some(branch) = result {
                     context.add_pending_branch(branch);
                 }
@@ -283,7 +306,7 @@ pub fn run<Value: VmValue, M: Vm<Value>, C: VmContext<Value, M>>(
     }
 }
 
-fn run_atomic<Value: VmValue, M: Vm<Value>>(insn: Instruction, vm: &mut M, size: usize) {
+fn run_atomic<Value: VmValue, M: Vm<Value>>(insn: Instruction, vm: &mut RefMut<M>, size: usize) {
     let atomic_code = insn.imm as i32;
     opcode_match! {
         atomic_code as i32,
@@ -296,35 +319,39 @@ fn run_atomic<Value: VmValue, M: Vm<Value>>(insn: Instruction, vm: &mut M, size:
          ]
         ] => {
             let src_r = insn.src_reg();
-            let (dst, src) = vm.unsafe_two_ro_regs(insn.dst_reg(), src_r);
+            let (dst, src) = return_if_none!(vm.two_regs(insn.dst_reg(), src_r));
             let result = dst.#=1(insn.off, src, size);
-            if let None = result {
+            if result.is_err() {
                 vm.invalidate("Atomic failed");
                 return;
             }
             #?((FETCH))
-                if let Some(old) = result {
+                if let Ok(old) = result {
                     *vm.reg(src_r) = old;
                 }
             ##
+            vm.update_reg(src_r);
         }
         [[BPF_ATOMIC_FETCH: FETCH], [BPF_ATOMIC_XCHG: XCHG]] => {
             let src_r =  insn.src_reg();
-            let (src, dst) = vm.unsafe_dst_src(src_r, insn.dst_reg());
-            if let Some(old) = dst.swap(insn.off, src, size) {
+            let (src, dst) = return_if_none!(vm.two_regs(src_r, insn.dst_reg()));
+            if let Ok(old) = dst.swap(insn.off, src, size) {
                 *vm.reg(src_r) = old;
             } else {
                 vm.invalidate("Atomic failed");
             }
+            vm.update_reg(src_r);
         }
         [[BPF_ATOMIC_FETCH: FETCH], [BPF_ATOMIC_CMPXCHG: CMPXCHG]] => {
             let src_r = insn.src_reg();
-            let (dst, src, expected) = vm.unsafe_three_regs(insn.dst_reg(), src_r, 0);
-            if let Some(old) = dst.compare_exchange(insn.off, expected, src, size) {
+            let (dst, src, expected) = return_if_none!(vm.three_regs(insn.dst_reg(), src_r, 0));
+            if let Ok(old) = dst.compare_exchange(insn.off, expected, src, size) {
                 *vm.reg(0) = old;
             } else {
                 vm.invalidate("Atomic failed");
             }
+            vm.update_reg(0);
+            vm.update_reg(src_r);
         }
         _ => vm.invalidate("Atomic failed"),
     };

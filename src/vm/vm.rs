@@ -3,6 +3,8 @@ use core::num::Wrapping;
 use alloc::vec::Vec;
 use ebpf_consts::{READABLE_REGISTER_COUNT, STACK_REGISTER, STACK_SIZE, WRITABLE_REGISTER_COUNT};
 
+use crate::safe::mut_borrow_items;
+
 use super::{
     context::Forker,
     value::{Verifiable, VmValue},
@@ -28,20 +30,12 @@ pub trait Vm<Value: VmValue>: Forker<Value, Self> {
     fn reg(&mut self, i: u8) -> &mut Value;
     /// Gets the value of a register
     fn ro_reg(&self, i: u8) -> &Value;
+    /// Duplicates the reference
+    unsafe fn dup(&mut self) -> &mut Self;
     /// Gets the values of two registers
-    ///
-    /// Internally it uses unsafe to work around the multiple borrow error
-    fn unsafe_two_regs(&mut self, i: u8, j: u8) -> (&mut Value, &mut Value);
+    fn two_regs(&mut self, i: u8, j: u8) -> Option<(&mut Value, &mut Value)>;
     /// Gets the values of two registers
-    ///
-    /// Internally it uses unsafe to work around the multiple borrow error
-    fn unsafe_two_ro_regs(&mut self, i: u8, j: u8) -> (&Value, &Value);
-    /// Gets the values of two registers
-    ///
-    /// Internally it uses unsafe to work around the multiple borrow error
-    fn unsafe_three_regs(&mut self, i: u8, j: u8, k: u8) -> (&Value, &mut Value, &mut Value);
-    /// Uhhh
-    fn unsafe_dst_src(&self, i: u8, j: u8) -> (&mut Value, &Value);
+    fn three_regs(&mut self, i: u8, j: u8, k: u8) -> Option<(&mut Value, &mut Value, &mut Value)>;
     /// Checks if a certain register is invalidated
     fn update_reg(&mut self, reg: u8);
 }
@@ -98,36 +92,16 @@ impl Vm<Wrapping<u64>> for UncheckedVm<Wrapping<u64>> {
         }
     }
 
-    fn unsafe_two_regs(&mut self, i: u8, j: u8) -> (&mut Value, &mut Value) {
-        if i == j {
-            self.invalidate("Multiple mut borrow");
-        }
-        let ptr = self as *mut Self;
-        unsafe { (self.reg(i), (*ptr).reg(j)) }
+    unsafe fn dup(&mut self) -> &mut Self {
+        (self as *mut Self).as_mut().unwrap()
     }
 
-    fn unsafe_three_regs(&mut self, i: u8, j: u8, k: u8) -> (&Value, &mut Value, &mut Value) {
-        if i == j || j == k || i == k {
-            self.invalidate("Multiple mut borrow");
-        }
-        let ptr = self as *mut Self;
-        unsafe { (self.ro_reg(i), (*ptr).reg(j), (*ptr).reg(k)) }
+    fn two_regs(&mut self, i: u8, j: u8) -> Option<(&mut Value, &mut Value)> {
+        mut_borrow_items!(self.registers, [i as usize, j as usize], Value)
     }
 
-    fn unsafe_dst_src(&self, i: u8, j: u8) -> (&mut Value, &Value) {
-        if i == j {
-            self.invalidate("Multiple mut borrow");
-        }
-        let ptr = self as *const Self as *mut Self;
-        if i >= WRITABLE_REGISTER_COUNT || j >= READABLE_REGISTER_COUNT {
-            self.invalidate("Illegal register");
-        }
-        unsafe { ((*ptr).reg(i), (*ptr).ro_reg(j)) }
-    }
-
-    fn unsafe_two_ro_regs(&mut self, i: u8, j: u8) -> (&Wrapping<u64>, &Wrapping<u64>) {
-        let ptr = self as *const Self as *mut Self;
-        unsafe { ((*ptr).ro_reg(i), (*ptr).ro_reg(j)) }
+    fn three_regs(&mut self, i: u8, j: u8, k: u8) -> Option<(&mut Value, &mut Value, &mut Value)> {
+        mut_borrow_items!(self.registers, [i as usize, j as usize, k as usize], Value)
     }
 }
 

@@ -6,6 +6,7 @@ pub mod scalar;
 mod range;
 mod tnum;
 pub mod pointees;
+pub mod comparable;
 
 /// A `Value` implementation
 #[derive(Clone)]

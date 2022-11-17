@@ -1,4 +1,4 @@
-use std::num::Wrapping;
+use std::{num::Wrapping, rc::Rc, cell::RefCell};
 
 use ebpf_analyzer::vm::{
     run,
@@ -58,7 +58,8 @@ pub fn test_jumps() {
 
 pub fn assert_jumps(op: u8, dst_v: u64, src_v: u64, jumps: bool) {
     const NUMBER: u64 = 0x0EADBEEF;
-    let mut vm = UncheckedVm::<Wrapping<u64>>::new();
+    let v = Rc::new(RefCell::new(UncheckedVm::<Wrapping<u64>>::new()));
+    let mut vm = v.borrow_mut();
     assert!(vm.is_valid());
 
     let dst = (WRITABLE_REGISTER_COUNT - 2) as u64;

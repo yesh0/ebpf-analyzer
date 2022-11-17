@@ -11,17 +11,22 @@
 
 use core::{num::Wrapping, sync::atomic::Ordering};
 
+pub enum AtomicError {
+    IllegalAccess,
+    UnsupportedBitness,
+}
+
 /// A trait wrapping up `AtomicU32` and `AtomicU64`, which might not be available
 pub trait Atomic
 where
     Self: Sized,
 {
-    fn fetch_add(&self, offset: i16, rhs: &Self, size: usize) -> Option<Self>;
-    fn fetch_or(&self, offset: i16, rhs: &Self, size: usize) -> Option<Self>;
-    fn fetch_and(&self, offset: i16, rhs: &Self, size: usize) -> Option<Self>;
-    fn fetch_xor(&self, offset: i16, rhs: &Self, size: usize) -> Option<Self>;
-    fn swap(&self, offset: i16, rhs: &Self, size: usize) -> Option<Self>;
-    fn compare_exchange(&self, offset: i16, expected: &Self, rhs: &Self, size: usize) -> Option<Self>;
+    fn fetch_add(&self, offset: i16, rhs: &Self, size: usize) -> Result<Self, AtomicError>;
+    fn fetch_or(&self, offset: i16, rhs: &Self, size: usize) -> Result<Self, AtomicError>;
+    fn fetch_and(&self, offset: i16, rhs: &Self, size: usize) -> Result<Self, AtomicError>;
+    fn fetch_xor(&self, offset: i16, rhs: &Self, size: usize) -> Result<Self, AtomicError>;
+    fn swap(&self, offset: i16, rhs: &Self, size: usize) -> Result<Self, AtomicError>;
+    fn compare_exchange(&self, offset: i16, expected: &Self, rhs: &Self, size: usize) -> Result<Self, AtomicError>;
 }
 
 #[cfg(feature = "atomic32")]
@@ -48,19 +53,19 @@ fn unchecked_add(x: u64, y: i16) -> u64 {
 
 macro_rules! atomic_impl {
     ( $func_name:ident ) => {
-        fn $func_name(&self, offset: i16, rhs: &Self, size: usize) -> Option<Self> {
+        fn $func_name(&self, offset: i16, rhs: &Self, size: usize) -> Result<u64, AtomicError> {
             let ptr = unchecked_add(*self, offset);
             match size {
                 #[cfg(feature = "atomic32")]
-                32 => Some(
+                32 => Ok(
                     unsafe { crate::u32::from_u32_addr(ptr) }
                         .$func_name(*rhs as u32, Ordering::SeqCst) as u64,
                 ),
                 #[cfg(feature = "atomic64")]
-                64 => Some(
+                64 => Ok(
                     unsafe { crate::u64::from_u64_addr(ptr) }.$func_name(*rhs, Ordering::SeqCst),
                 ),
-                _ => None,
+                _ => Err(AtomicError::UnsupportedBitness),
             }
         }
     };
@@ -79,11 +84,11 @@ impl Atomic for u64 {
         expected: &Self,
         rhs: &Self,
         size: usize,
-    ) -> Option<Self> {
+    ) -> Result<u64, AtomicError> {
         let ptr = unchecked_add(*self, offset);
         match size {
             #[cfg(feature = "atomic32")]
-            32 => Some(
+            32 => Ok(
                 match unsafe { crate::u32::from_u32_addr(ptr) }.compare_exchange(
                     *expected as u32,
                     *rhs as u32,
@@ -95,7 +100,7 @@ impl Atomic for u64 {
                 } as u64,
             ),
             #[cfg(feature = "atomic64")]
-            64 => Some(
+            64 => Ok(
                 match unsafe { crate::u64::from_u64_addr(ptr) }.compare_exchange(
                     *expected,
                     *rhs,
@@ -106,14 +111,14 @@ impl Atomic for u64 {
                     Err(v) => v,
                 },
             ),
-            _ => None,
+            _ => Err(AtomicError::UnsupportedBitness),
         }
     }
 }
 
 macro_rules! atomic_wrapping_impl {
     ( $func_name:ident ) => {
-        fn $func_name(&self, offset: i16, rhs: &Self, size: usize) -> Option<Self> {
+        fn $func_name(&self, offset: i16, rhs: &Self, size: usize) -> Result<Wrapping<u64>, AtomicError> {
             self.0.$func_name(offset, &rhs.0, size).map(|i| Wrapping(i))
         }
     };
@@ -132,7 +137,7 @@ impl Atomic for Wrapping<u64> {
         expected: &Self,
         rhs: &Self,
         size: usize,
-    ) -> Option<Self> {
+    ) -> Result<Wrapping<u64>, AtomicError> {
         self.0
             .compare_exchange(offset, &expected.0, &rhs.0, size)
             .map(|i| Wrapping(i))

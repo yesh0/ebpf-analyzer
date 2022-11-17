@@ -1,4 +1,4 @@
-use std::num::Wrapping;
+use std::{num::Wrapping, rc::Rc, cell::RefCell};
 
 use ebpf_analyzer::vm::{
     run,
@@ -46,7 +46,8 @@ pub fn test_store_load() {
 
 #[test]
 pub fn test_imm64() {
-    let mut vm = UncheckedVm::<Wrapping<u64>>::new();
+    let v = Rc::new(RefCell::new(UncheckedVm::<Wrapping<u64>>::new()));
+    let mut vm = v.borrow_mut();
     assert!(vm.is_valid());
 
     let code = [
@@ -60,7 +61,8 @@ pub fn test_imm64() {
 }
 
 pub fn assert_store_load(op: u8, value: u64, result: u64) {
-    let mut vm = UncheckedVm::<Wrapping<u64>>::new();
+    let v = Rc::new(RefCell::new(UncheckedVm::<Wrapping<u64>>::new()));
+    let mut vm = v.borrow_mut();
     assert!(vm.is_valid());
 
     let stack = STACK_REGISTER as u64;

@@ -1,4 +1,4 @@
-use std::num::Wrapping;
+use std::{num::Wrapping, rc::Rc, cell::RefCell};
 
 use ebpf_analyzer::vm::{
     run,
@@ -58,7 +58,8 @@ pub fn test_atomic() {
 }
 
 pub fn assert_atomic(imm: i32, r0: u64, src_v: u64, target: u64, expected: u64, returns: u64) {
-    let mut vm = UncheckedVm::<Wrapping<u64>>::new();
+    let v = Rc::new(RefCell::new(UncheckedVm::<Wrapping<u64>>::new()));
+    let mut vm = v.borrow_mut();
     assert!(vm.is_valid());
 
     let stack = STACK_REGISTER as u64;

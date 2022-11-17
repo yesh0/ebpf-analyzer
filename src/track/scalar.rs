@@ -76,6 +76,22 @@ impl Scalar {
         self.bits = NumBits::pruned(self.bits.mask() | 0xFFFF_FFFF_0000_0000, self.bits.value())
     }
 
+    pub fn value32(&self) -> Option<u32> {
+        if self.is_constant::<32>().unwrap_or(false) {
+            Some(self.urange32.max)
+        } else {
+            None
+        }
+    }
+
+    pub fn value64(&self) -> Option<u64> {
+        if self.is_constant::<64>().unwrap_or(false) {
+            Some(self.urange.max)
+        } else {
+            None
+        }
+    }
+
     /// Returns `None` if the state invalid, or `Some(true_if_constant)`
     pub fn is_constant<const WIDTH: u8>(&self) -> Option<bool> {
         debug_assert!(WIDTH == 32 || WIDTH == 64);
@@ -227,13 +243,13 @@ impl Scalar {
         debug_assert!(WIDTH == 32 || WIDTH == 64);
 
         macro_rules! adjust_urange {
-            ($urange:ident) => {
+            ($urange:ident, $width:expr) => {
                 let max = self.$urange.max;
 
-                if shift >= WIDTH as u64 {
+                if shift >= $width as u64 {
                     // Undefined shifts
                     self.$urange.mark_as_unknown();
-                } else if max > (1 << (WIDTH as u64 - shift)) {
+                } else if max > (1 << ($width as u64 - shift)) {
                     // Some bits are shifted off
                     self.$urange.mark_as_unknown();
                 } else {
@@ -249,7 +265,7 @@ impl Scalar {
             self.irange.mark_as_unknown();
             self.irange32.mark_as_unknown();
             self.urange.mark_as_unknown();
-            adjust_urange!(urange32);
+            adjust_urange!(urange32, 32);
             self.bits = if shift >= WIDTH as u64 {
                 NumBits::unknown()
             } else {
@@ -273,8 +289,8 @@ impl Scalar {
                 self.irange.mark_as_unknown();
             }
             self.irange32.mark_as_unknown();
-            adjust_urange!(urange);
-            adjust_urange!(urange32);
+            adjust_urange!(urange, 64);
+            adjust_urange!(urange32, 32);
             self.bits = if shift >= WIDTH as u64 {
                 NumBits::unknown()
             } else {
