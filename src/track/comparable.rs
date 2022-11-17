@@ -331,9 +331,6 @@ fn test_le_constants() {
 #[cfg(test)]
 use super::scalar::unknown;
 
-#[cfg(test)]
-extern crate std;
-
 #[test]
 fn test_ranged_scalars() {
     let mut s = unknown(8);
@@ -365,7 +362,6 @@ fn test_ranged_scalars() {
         ComparisonResult::Perhaps((s1, s2)) => {
             assert!(s.irange32.min == 0x100);
             assert!(s1.is_constant::<32>().unwrap_or(false));
-            std::println!("{:?}", s2.irange32);
             assert!(s2.is_constant::<32>().unwrap_or(false));
         }
         ComparisonResult::Always => panic!("A"),

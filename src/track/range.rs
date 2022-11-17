@@ -102,8 +102,8 @@ macro_rules! impl_sync_from_upper {
         impl SyncFromUpper<$upper> for RangePair<$self> {
             fn sync_from(&mut self, upper: &RangePair<$upper>) {
                 if let (Some(min), Some(max)) = (upper.min.$to(), upper.max.$to()) {
-                    self.min = min;
-                    self.max = max;
+                    self.min = self.min.max(min);
+                    self.max = self.max.min(max);
                 }
             }
         }

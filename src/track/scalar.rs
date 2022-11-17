@@ -878,35 +878,3 @@ pub fn test_random_ops() {
         }
     }
 }
-
-#[cfg(test)]
-extern crate std;
-
-#[test]
-pub fn test() {
-    //std::println!("{}: {:?}, {:?}, {:?}, {:?}, {:?}: 0x{:x}", op, prev.bits, prev.irange, prev.urange, prev.irange32, prev.urange32, rhs);
-
-    let b = Scalar::constant64(0x964cc655da44d553);
-
-    let mut s = Scalar {
-        bits: NumBits::pruned(0xfffffffc00080000, 0),
-        irange: RangePair::new(-0x400000000, 0x80000),
-        irange32: RangePair::new(0, 0x80000),
-        urange: RangePair::new(0, 0xfffffffc00080000),
-        urange32: RangePair::new(0, 0x80000),
-    };
-
-    s -= &b;
-    s.narrow_bounds();
-    std::println!("{:?} {:?} {:?}", s.bits, s.irange, s.urange);
-
-    s.sync_sign_bounds();
-    std::println!("{:?} {:?} {:?}", s.bits, s.irange, s.urange);
-    std::println!(
-        "{:?}",
-        s.bits
-            .intersects(NumBits::range(s.urange.min, s.urange.max))
-    );
-    s.sync_bits();
-    std::println!("{:?} {:?} {:?}", s.bits, s.irange, s.urange);
-}
