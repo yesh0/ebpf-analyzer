@@ -2,7 +2,7 @@ use std::{num::Wrapping, rc::Rc, cell::RefCell};
 
 use ebpf_analyzer::interpreter::{
     run,
-    vm::{UncheckedVm, Vm}, context::NoOpContext,
+    vm::{UncheckedVm, Vm}, context::NoOpContext, helper::HelperCollection,
 };
 use ebpf_consts::{
     mask::BPF_OPCODE_CLASS_MASK, BPF_DW, BPF_LDX, BPF_MEM, BPF_ST, BPF_STX, STACK_REGISTER, BPF_W, BPF_H, BPF_B, BPF_LD, BPF_IMM,
@@ -46,7 +46,7 @@ pub fn test_store_load() {
 
 #[test]
 pub fn test_imm64() {
-    let v = Rc::new(RefCell::new(UncheckedVm::<Wrapping<u64>>::new()));
+    let v = Rc::new(RefCell::new(UncheckedVm::<Wrapping<u64>>::new(HelperCollection::new(&[]))));
     let mut vm = v.borrow_mut();
     assert!(vm.is_valid());
 
@@ -61,7 +61,7 @@ pub fn test_imm64() {
 }
 
 pub fn assert_store_load(op: u8, value: u64, result: u64) {
-    let v = Rc::new(RefCell::new(UncheckedVm::<Wrapping<u64>>::new()));
+    let v = Rc::new(RefCell::new(UncheckedVm::<Wrapping<u64>>::new(HelperCollection::new(&[]))));
     let mut vm = v.borrow_mut();
     assert!(vm.is_valid());
 

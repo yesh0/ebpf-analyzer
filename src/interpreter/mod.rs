@@ -1,6 +1,7 @@
 //! Implements a generic interpreter and a tiny VM.
 
 pub mod context;
+pub mod helper;
 pub mod value;
 pub mod vm;
 
@@ -9,7 +10,7 @@ use core::cell::RefMut;
 use ebpf_consts::*;
 use ebpf_macros::opcode_match;
 
-use crate::{spec::Instruction, interpreter::context::Fork};
+use crate::{interpreter::context::Fork, spec::Instruction};
 
 use self::{context::VmContext, value::VmValue, vm::Vm};
 
@@ -243,7 +244,9 @@ pub fn run<Value: VmValue, M: Vm<Value>, C: VmContext<Value, M>>(
             [[BPF_JMP: JMP], [BPF_EXIT: EXIT]] => {
                 return;
             }
-            // TODO: BPF_CALL
+            [[BPF_JMP: JMP], [BPF_CALL: CALL]] => {
+                run_call(insn, vm, code);
+            }
             // Store / load
             [[BPF_LDX: LDX, BPF_STX: STX, BPF_ST: ST], [BPF_MEM: MEM],
              [
@@ -305,6 +308,14 @@ pub fn run<Value: VmValue, M: Vm<Value>, C: VmContext<Value, M>>(
             }
         };
         *vm.pc() = pc;
+    }
+}
+
+fn run_call<Value: VmValue, M: Vm<Value>>(insn: Instruction, vm: &mut RefMut<M>, _code: &[u64]) {
+    match insn.src_reg() {
+        BPF_CALL_HELPER => vm.call_helper(insn.imm),
+        BPF_CALL_KFUNC | BPF_CALL_PSEUDO => vm.invalidate("Unsupported BPF_CALL"),
+        _ => vm.invalidate("Invalid BPF_CALL"),
     }
 }
 

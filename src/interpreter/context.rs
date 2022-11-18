@@ -13,6 +13,7 @@ pub trait VmContext<Value: VmValue, V: Vm<Value>> {
 }
 
 /// A no-op context for interpreter
+#[derive(Default)]
 pub struct NoOpContext;
 
 impl<Value: VmValue, V: Vm<Value>> VmContext<Value, V> for NoOpContext {

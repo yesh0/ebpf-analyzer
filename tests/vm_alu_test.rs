@@ -2,7 +2,7 @@ use std::{num::Wrapping, rc::Rc, cell::RefCell};
 
 use ebpf_analyzer::interpreter::{
     run,
-    vm::{UncheckedVm, Vm}, context::NoOpContext,
+    vm::{UncheckedVm, Vm}, context::NoOpContext, helper::HelperCollection,
 };
 use ebpf_consts::{
     BPF_ADD, BPF_ALU, BPF_ALU64, BPF_DIV, BPF_K, BPF_MOD, BPF_MUL, BPF_SUB, BPF_X,
@@ -116,7 +116,7 @@ pub fn test_bitwise() {
 }
 
 pub fn assert_biop(op: u8, dst_v: u64, src_v: u64, result: u64) {
-    let v = Rc::new(RefCell::new(UncheckedVm::<Wrapping<u64>>::new()));
+    let v = Rc::new(RefCell::new(UncheckedVm::<Wrapping<u64>>::new(HelperCollection::new(&[]))));
     let mut vm = v.borrow_mut();
     assert!(vm.is_valid());
     let dst = (WRITABLE_REGISTER_COUNT - 2) as u64;

@@ -176,6 +176,10 @@ impl Vm<CheckedValue> for BranchState {
     unsafe fn dup(&mut self) -> &mut Self {
         (self as *mut Self).as_mut().unwrap()
     }
+
+    fn call_helper(&mut self, _helper: i32) {
+        todo!()
+    }
 }
 
 impl Debug for BranchState {

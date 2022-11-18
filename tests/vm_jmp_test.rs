@@ -2,7 +2,7 @@ use std::{num::Wrapping, rc::Rc, cell::RefCell};
 
 use ebpf_analyzer::interpreter::{
     run,
-    vm::{UncheckedVm, Vm}, context::NoOpContext,
+    vm::{UncheckedVm, Vm}, context::NoOpContext, helper::HelperCollection,
 };
 use ebpf_consts::*;
 
@@ -58,7 +58,7 @@ pub fn test_jumps() {
 
 pub fn assert_jumps(op: u8, dst_v: u64, src_v: u64, jumps: bool) {
     const NUMBER: u64 = 0x0EADBEEF;
-    let v = Rc::new(RefCell::new(UncheckedVm::<Wrapping<u64>>::new()));
+    let v = Rc::new(RefCell::new(UncheckedVm::<Wrapping<u64>>::new(HelperCollection::new(&[]))));
     let mut vm = v.borrow_mut();
     assert!(vm.is_valid());
 

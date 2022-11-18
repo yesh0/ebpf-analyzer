@@ -2,7 +2,7 @@ use std::{num::Wrapping, rc::Rc, cell::RefCell};
 
 use ebpf_analyzer::interpreter::{
     run,
-    vm::{UncheckedVm, Vm}, context::NoOpContext,
+    vm::{UncheckedVm, Vm}, context::NoOpContext, helper::HelperCollection,
 };
 use ebpf_consts::{
     BPF_ATOMIC, BPF_ATOMIC_ADD, BPF_ATOMIC_AND, BPF_ATOMIC_CMPXCHG, BPF_ATOMIC_FETCH,
@@ -58,7 +58,7 @@ pub fn test_atomic() {
 }
 
 pub fn assert_atomic(imm: i32, r0: u64, src_v: u64, target: u64, expected: u64, returns: u64) {
-    let v = Rc::new(RefCell::new(UncheckedVm::<Wrapping<u64>>::new()));
+    let v = Rc::new(RefCell::new(UncheckedVm::<Wrapping<u64>>::new(HelperCollection::new(&[]))));
     let mut vm = v.borrow_mut();
     assert!(vm.is_valid());
 

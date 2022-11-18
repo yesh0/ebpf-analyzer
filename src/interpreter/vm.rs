@@ -7,6 +7,7 @@ use crate::safe::{mut_borrow_items, safe_ref_unsafe_cell};
 
 use super::{
     context::Forker,
+    helper::HelperCollection,
     value::{Verifiable, VmValue},
 };
 
@@ -42,6 +43,8 @@ pub trait Vm<Value: VmValue>: Forker<Value, Self> {
     fn three_regs(&mut self, i: u8, j: u8, k: u8) -> Option<(&mut Value, &mut Value, &mut Value)>;
     /// Checks if a certain register is invalidated
     fn update_reg(&mut self, reg: u8);
+    /// Call a helper function
+    fn call_helper(&mut self, helper: i32);
 }
 
 struct UncheckedInnerVm<Value: VmValue> {
@@ -49,6 +52,7 @@ struct UncheckedInnerVm<Value: VmValue> {
     pc: usize,
     registers: [Value; READABLE_REGISTER_COUNT as usize],
     stack: Vec<Value>,
+    helpers: HelperCollection,
 }
 
 /// A VM impl
@@ -108,16 +112,32 @@ impl Vm<Wrapping<u64>> for UncheckedVm<Wrapping<u64>> {
             Value
         )
     }
+
+    fn call_helper(&mut self, helper: i32) {
+        if let Some(v) = self.inner().helpers.call_helper(
+            helper,
+            self.ro_reg(1).0,
+            self.ro_reg(2).0,
+            self.ro_reg(3).0,
+            self.ro_reg(4).0,
+            self.ro_reg(5).0,
+        ) {
+            self.reg(0).0 = v;
+        } else {
+            self.invalidate("Helper not found");
+        }
+    }
 }
 
 impl<Value: VmValue> UncheckedVm<Value> {
     /// Creates a zero-initialized VM
-    pub fn new() -> Self {
+    pub fn new(helpers: HelperCollection) -> Self {
         let mut vm = UncheckedInnerVm {
             invalid: None,
             pc: 0,
             registers: Default::default(),
             stack: Vec::new(),
+            helpers,
         };
         vm.stack.resize(STACK_SIZE / 8, Value::default());
         vm.registers[STACK_REGISTER as usize] =
@@ -127,11 +147,5 @@ impl<Value: VmValue> UncheckedVm<Value> {
 
     fn inner(&self) -> &UncheckedInnerVm<Value> {
         safe_ref_unsafe_cell(&self.0)
-    }
-}
-
-impl<Value: VmValue> Default for UncheckedVm<Value> {
-    fn default() -> Self {
-        Self::new()
     }
 }
