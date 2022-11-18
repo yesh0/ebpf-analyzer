@@ -6,11 +6,11 @@ to update tracked values and diverge the execution path.
 
 ::: info
 Among `JMP/JMP32` opcodes, there are some other instructions:
-- `BPF_CALL`: Function calls
+- `BPF_CALL`: [Function calls](./functions.md)
 - `BPF_EXIT`: Returns
 - `BPF_JA`: Unconditional jumps
 
-[Verifying them](https://github.com/torvalds/linux/blob/4dc12f37a8e98e1dca5521c14625c869537b50b6/kernel/bpf/verifier.c#L12360-L12450) is easier.
+[Verifying them](https://github.com/torvalds/linux/blob/4dc12f37a8e98e1dca5521c14625c869537b50b6/kernel/bpf/verifier.c#L12360-L12450) is done elsewhere.
 :::
 
 ## `check_cond_jmp_op`
