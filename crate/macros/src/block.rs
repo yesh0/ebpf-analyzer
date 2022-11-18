@@ -10,7 +10,6 @@ use syn::{
 use crate::parser::Alias;
 
 /// Controls whether a code block is inserted
-#[derive(Debug)]
 pub struct Conditions {
     pub when: Vec<Vec<Alias>>,
 }
@@ -76,7 +75,6 @@ impl Parse for Conditions {
 }
 
 /// A code block processing element
-#[derive(Debug)]
 pub enum Replacing {
     /// The tokens should be inserted as is
     None(TokenStream),
@@ -144,7 +142,6 @@ impl Parse for Replacing {
 }
 
 /// A code block
-#[derive(Debug)]
 pub struct CodeBlock(pub Vec<Replacing>);
 
 impl Parse for CodeBlock {

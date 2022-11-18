@@ -13,7 +13,6 @@ use crate::{
 };
 
 /// The root node
-#[derive(Debug)]
 pub struct OpcodeMatches {
     /// Arms in the match statement
     pub matches: Vec<MatchArm>,
@@ -23,7 +22,6 @@ pub struct OpcodeMatches {
 }
 
 /// A match arm in the macro
-#[derive(Debug)]
 pub struct MatchArm {
     /// The `[[A: a, B: b], [X: x, Y: y]]` part in the arm. Empty if unconditional.
     pub combinations: Vec<Aliases>,
@@ -35,7 +33,6 @@ pub struct MatchArm {
 
 pub type Alias = String;
 
-#[derive(Debug)]
 pub struct Aliases(pub Vec<(Alias, &'static str)>);
 
 /// Reads all code blocks until meeting a top-level bracket

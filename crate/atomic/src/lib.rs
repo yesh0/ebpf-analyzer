@@ -10,6 +10,7 @@
 
 use core::{num::Wrapping, sync::atomic::Ordering};
 
+#[derive(Debug)]
 pub enum AtomicError {
     IllegalAccess,
     UnsupportedBitness,
@@ -25,7 +26,13 @@ where
     fn fetch_and(&self, offset: i16, rhs: &Self, size: usize) -> Result<Self, AtomicError>;
     fn fetch_xor(&self, offset: i16, rhs: &Self, size: usize) -> Result<Self, AtomicError>;
     fn swap(&self, offset: i16, rhs: &Self, size: usize) -> Result<Self, AtomicError>;
-    fn compare_exchange(&self, offset: i16, expected: &Self, rhs: &Self, size: usize) -> Result<Self, AtomicError>;
+    fn compare_exchange(
+        &self,
+        offset: i16,
+        expected: &Self,
+        rhs: &Self,
+        size: usize,
+    ) -> Result<Self, AtomicError>;
 }
 
 #[cfg(feature = "atomic32")]
@@ -33,10 +40,10 @@ pub mod u32 {
     use core::sync::atomic::AtomicU32;
 
     /// Creates [AtomicU32] from a raw pointer
-    /// 
+    ///
     /// # Safety
     /// It is a wrapper around `AtomicU32::from_mut`.
-    pub unsafe fn from_u32_addr(addr: u64) -> &'static mut AtomicU32 {
+    pub(super) unsafe fn from_u32_addr(addr: u64) -> &'static mut AtomicU32 {
         AtomicU32::from_mut(&mut *(addr as *mut u32))
     }
 }
@@ -46,10 +53,10 @@ pub mod u64 {
     use core::sync::atomic::AtomicU64;
 
     /// Creates [AtomicU64] from a raw pointer
-    /// 
+    ///
     /// # Safety
     /// It is a wrapper around `AtomicU64::from_mut`.
-    pub unsafe fn from_u64_addr(addr: u64) -> &'static mut AtomicU64 {
+    pub(super) unsafe fn from_u64_addr(addr: u64) -> &'static mut AtomicU64 {
         AtomicU64::from_mut(&mut *(addr as *mut u64))
     }
 }
@@ -64,13 +71,11 @@ macro_rules! atomic_impl {
             let ptr = unchecked_add(*self, offset);
             match size {
                 #[cfg(feature = "atomic32")]
-                32 => Ok(
-                    unsafe { crate::u32::from_u32_addr(ptr) }
-                        .$func_name(*rhs as u32, Ordering::SeqCst) as u64,
-                ),
+                32 => Ok(unsafe { crate::u32::from_u32_addr(ptr) }
+                    .$func_name(*rhs as u32, Ordering::SeqCst) as u64),
                 #[cfg(feature = "atomic64")]
                 64 => Ok(
-                    unsafe { crate::u64::from_u64_addr(ptr) }.$func_name(*rhs, Ordering::SeqCst),
+                    unsafe { crate::u64::from_u64_addr(ptr) }.$func_name(*rhs, Ordering::SeqCst)
                 ),
                 _ => Err(AtomicError::UnsupportedBitness),
             }
@@ -125,8 +130,13 @@ impl Atomic for u64 {
 
 macro_rules! atomic_wrapping_impl {
     ( $func_name:ident ) => {
-        fn $func_name(&self, offset: i16, rhs: &Self, size: usize) -> Result<Wrapping<u64>, AtomicError> {
-            self.0.$func_name(offset, &rhs.0, size).map(|i| Wrapping(i))
+        fn $func_name(
+            &self,
+            offset: i16,
+            rhs: &Self,
+            size: usize,
+        ) -> Result<Wrapping<u64>, AtomicError> {
+            self.0.$func_name(offset, &rhs.0, size).map(Wrapping)
         }
     };
 }
@@ -149,4 +159,49 @@ impl Atomic for Wrapping<u64> {
             .compare_exchange(offset, &expected.0, &rhs.0, size)
             .map(Wrapping)
     }
+}
+
+#[test]
+fn test_memory_access() -> Result<(), AtomicError> {
+    let mut i = 0u32;
+    let mut j = 0u64;
+    let ptr_i = Wrapping(&mut i as *mut u32 as u64);
+    let ptr_j = Wrapping(&mut j as *mut u64 as u64);
+
+    assert!(ptr_i.fetch_add(0, &Wrapping(12), 32)? == Wrapping(0));
+    assert!(ptr_j.fetch_add(0, &Wrapping(12), 64)? == Wrapping(0));
+    assert!(i == 12);
+    assert!(j == 12);
+
+    assert!(ptr_i.fetch_and(0, &Wrapping(9), 32)? == Wrapping(12));
+    assert!(ptr_j.fetch_and(0, &Wrapping(9), 64)? == Wrapping(12));
+    assert!(i == 8);
+    assert!(j == 8);
+
+    assert!(ptr_i.fetch_or(0, &Wrapping(16), 32)? == Wrapping(8));
+    assert!(ptr_j.fetch_or(0, &Wrapping(16), 64)? == Wrapping(8));
+    assert!(i == 24);
+    assert!(j == 24);
+
+    assert!(ptr_i.fetch_xor(0, &Wrapping(9), 32)? == Wrapping(24));
+    assert!(ptr_j.fetch_xor(0, &Wrapping(9), 64)? == Wrapping(24));
+    assert!(i == 17);
+    assert!(j == 17);
+
+    assert!(ptr_i.compare_exchange(0, &Wrapping(18), &Wrapping(32), 32)? == Wrapping(17));
+    assert!(ptr_j.compare_exchange(0, &Wrapping(18), &Wrapping(32), 64)? == Wrapping(17));
+    assert!(ptr_i.compare_exchange(0, &Wrapping(17), &Wrapping(32), 32)? == Wrapping(17));
+    assert!(ptr_j.compare_exchange(0, &Wrapping(17), &Wrapping(32), 64)? == Wrapping(17));
+    assert!(i == 32);
+    assert!(j == 32);
+
+    assert!(ptr_i.fetch_add(0, &Default::default(), 16).is_err());
+    assert!(ptr_i.compare_exchange(0, &Default::default(), &Default::default(), 16).is_err());
+    assert!(ptr_j.fetch_add(0, &Default::default(), 16).is_err());
+    assert!(ptr_j.compare_exchange(0, &Default::default(), &Default::default(), 16).is_err());
+
+    extern crate std;
+    std::println!("Tese debug: {:?}", AtomicError::IllegalAccess);
+
+    Ok(())
 }

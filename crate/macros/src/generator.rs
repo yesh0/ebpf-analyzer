@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use proc_macro::TokenStream;
-use proc_macro2::{Ident, Literal, Punct, Spacing, Span, TokenStream as TokenStream2};
+use proc_macro2::{Ident, Literal, Span, TokenStream as TokenStream2};
 use quote::{quote, ToTokens, TokenStreamExt};
 
 use crate::{
@@ -127,20 +127,9 @@ fn construct_code(
                     panic!("#{} out of range!", i);
                 }
                 let symbol = &aliases[*i];
-                if let Ok(tokens) = TokenStream2::from_str(symbol) {
-                    output.extend(tokens);
-                } else if char::is_alphabetic(symbol.chars().next().unwrap()) {
-                    output
-                        .extend(Ident::new(symbol.as_str(), Span::call_site()).to_token_stream());
-                } else {
-                    let joining = &symbol[0..symbol.len() - 1];
-                    for c in joining.chars() {
-                        output.extend(Punct::new(c, Spacing::Joint).to_token_stream());
-                    }
-                    output.extend(
-                        Punct::new(symbol.chars().last().unwrap(), Spacing::Joint)
-                            .to_token_stream(),
-                    );
+                match TokenStream2::from_str(symbol) {
+                    Ok(tokens) => output.extend(tokens),
+                    Err(err) => panic!("{:?}", err),
                 }
             }
             Replacing::Nested(conditions, code) => {
@@ -164,4 +153,48 @@ fn increment(current: &mut Vec<usize>, combinations: &[Aliases]) -> bool {
         }
     }
     true
+}
+
+#[test]
+#[should_panic]
+fn test_panic() {
+    construct_code(
+        &[],
+        &[],
+        &CodeBlock(vec![Replacing::End]),
+        &mut TokenStream2::new(),
+    );
+}
+
+#[test]
+#[should_panic]
+fn test_str_oor() {
+    construct_code(
+        &[],
+        &[],
+        &CodeBlock(vec![Replacing::WithString(1)]),
+        &mut TokenStream2::new(),
+    );
+}
+
+#[test]
+#[should_panic]
+fn test_raw_oor() {
+    construct_code(
+        &[],
+        &[],
+        &CodeBlock(vec![Replacing::WithRaw(1)]),
+        &mut TokenStream2::new(),
+    );
+}
+
+#[test]
+#[should_panic = "LexError"]
+fn test_raw_malformed() {
+    construct_code(
+        &["(((".to_owned()],
+        &[],
+        &CodeBlock(vec![Replacing::WithRaw(0)]),
+        &mut TokenStream2::new(),
+    );
 }

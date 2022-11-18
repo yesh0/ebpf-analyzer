@@ -259,3 +259,12 @@ pub mod mask {
         class == BPF_JMP || class == BPF_JMP32
     }
 }
+
+#[test]
+fn test_masks() {
+    assert!(mask::is_jump(BPF_JMP_CALL));
+    assert!(mask::is_jump(BPF_JMP_EXIT));
+    assert!(!mask::is_jump(BPF_ALU64 | BPF_ADD | BPF_X));
+    assert!(mask::is_store_or_load(BPF_LD | BPF_IMM64_IMM | BPF_IMM));
+    assert!(!mask::is_store_or_load(BPF_JMP_CALL));
+}

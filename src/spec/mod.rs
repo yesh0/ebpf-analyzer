@@ -139,7 +139,7 @@ impl Instruction {
     /// Constructs an instruction from a encoded code
     pub fn from_raw(encoded: u64) -> Instruction {
         Instruction {
-            opcode: (encoded & 0xFF) as u8,
+            opcode: Self::opcode(encoded),
             regs: ((encoded >> 8) & 0xFF) as u8,
             off: ((encoded >> 16) & 0xFFFF) as i16,
             imm: (encoded >> 32) as i32,

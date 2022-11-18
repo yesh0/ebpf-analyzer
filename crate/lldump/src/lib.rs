@@ -27,3 +27,9 @@ pub fn parse_llvm_dump(s: &str) -> Vec<u64> {
         });
     output
 }
+
+#[test]
+#[should_panic]
+fn test_illegal_dump() {
+    parse_llvm_dump("LineNumber:\t1 2 3 4");
+}
