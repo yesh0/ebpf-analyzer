@@ -37,7 +37,7 @@ pub fn match_number(opcode: u8) -> u64 {
             let res = dst #=2 src;
             let s = #2;
             println!("Expr: {:#x} {} {:#x}", dst, s, src);
-            res as u64
+            res #?((ALU)) as u64 ##
         }
         _ => {
             let v = vec![0, 1, 2];

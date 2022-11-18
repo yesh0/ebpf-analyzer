@@ -74,7 +74,7 @@ impl MemoryRegion for StructRegion {
 
         // Reading some scalar fields
         for i in start..end {
-            if !Self::is_readable(self.map[i as usize]) {
+            if !Self::is_readable(self.map[i]) {
                 return Err(TrackError::PointerOffsetMisaligned);
             }
         }

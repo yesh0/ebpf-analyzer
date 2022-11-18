@@ -7,7 +7,6 @@
 
 #![no_std]
 #![feature(atomic_from_mut)]
-#![feature(mixed_integer_ops)]
 
 use core::{num::Wrapping, sync::atomic::Ordering};
 

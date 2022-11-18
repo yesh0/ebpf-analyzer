@@ -102,7 +102,7 @@ impl Forker<Wrapping<u64>, Self> for UncheckedVm<Wrapping<u64>> {
             };
             None
         } else {
-            *self.pc() = if (dst.1.0 as u64) & (src.1.0 as u64) != 0 {
+            *self.pc() = if dst.1.0 & src.1.0 != 0 {
                 fork.target
             } else {
                 fork.fall_through

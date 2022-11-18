@@ -309,7 +309,7 @@ pub fn run<Value: VmValue, M: Vm<Value>, C: VmContext<Value, M>>(
 }
 
 fn run_atomic<Value: VmValue, M: Vm<Value>>(insn: Instruction, vm: &mut RefMut<M>, size: usize) {
-    let atomic_code = insn.imm as i32;
+    let atomic_code = insn.imm;
     opcode_match! {
         atomic_code as i32,
         [[BPF_ATOMIC_FETCH: FETCH, BPF_ATOMIC_NO_FETCH: NO_FETCH],

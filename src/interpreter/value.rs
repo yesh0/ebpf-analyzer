@@ -213,7 +213,7 @@ impl Dereference for u64 {
             8 => *(ptr as *const u8) as u64,
             16 => *(ptr as *const u16) as u64,
             32 => *(ptr as *const u32) as u64,
-            64 => *(ptr as *const u64) as u64,
+            64 => *(ptr as *const u64),
             _ => 0,
         })
     }
@@ -224,7 +224,7 @@ impl Dereference for u64 {
             8 => *(ptr as *mut u8) = *value as u8,
             16 => *(ptr as *mut u16) = *value as u16,
             32 => *(ptr as *mut u32) = *value as u32,
-            64 => *(ptr as *mut u64) = *value as u64,
+            64 => *(ptr as *mut u64) = *value,
             _ => return false,
         }
         true

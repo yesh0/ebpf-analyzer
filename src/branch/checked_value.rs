@@ -204,7 +204,7 @@ impl VmScalar for CheckedValue {
     }
 
     fn constantu32(value: u32) -> Self {
-        Self::constant64(value as u32 as u64)
+        Self::constant64(value as u64)
     }
 }
 
