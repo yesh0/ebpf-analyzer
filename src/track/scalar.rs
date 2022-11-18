@@ -773,7 +773,7 @@ pub fn test_unknown() {
     let mut result = s.clone();
     ShiftAssign::<64, &Scalar>::shr_assign(&mut result, &un);
     assert_unknown(&result);
-    let mut result = s.clone();
+    let mut result = s;
     ShiftAssign::<64, &Scalar>::ashr_assign(&mut result, &un);
     assert_unknown(&result);
 }

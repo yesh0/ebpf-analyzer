@@ -1,48 +1,61 @@
-use core::{ops::*, fmt::Debug};
+use core::{cell::UnsafeCell, fmt::Debug, ops::*};
 
 use ebpf_atomic::{Atomic, AtomicError};
 
 use crate::{
+    interpreter::value::*,
     track::{scalar::Scalar, TrackedValue},
-    vm::value::*,
 };
 
-use super::unsafe_invalidate;
-
-#[derive(Clone, Default)]
-pub struct CheckedValue(pub Option<TrackedValue>);
+#[derive(Default)]
+pub struct CheckedValue(UnsafeCell<Option<TrackedValue>>);
 
 impl CheckedValue {
     fn invalidate(&self) {
         unsafe {
-            unsafe_invalidate!(&self.0, Option<TrackedValue>, None);
+            // Safe since we are single-threaded and only invalidating things
+            *self.0.get() = None
         }
     }
 
     fn mark_as_unknown(&mut self) {
-        if let Some(TrackedValue::Scalar(s)) = &mut self.0 {
+        if let Some(TrackedValue::Scalar(s)) = self.inner_mut() {
             s.mark_as_unknown();
         } else {
             self.invalidate();
         }
     }
+
+    pub(super) fn inner(&self) -> Option<&TrackedValue> {
+        unsafe { &*(self.0.get()) }.as_ref()
+    }
+
+    pub(super) fn inner_mut(&mut self) -> &mut Option<TrackedValue> {
+        self.0.get_mut()
+    }
 }
 
 impl From<Scalar> for CheckedValue {
     fn from(s: Scalar) -> Self {
-        CheckedValue(Some(TrackedValue::Scalar(s)))
+        CheckedValue(UnsafeCell::new(Some(TrackedValue::Scalar(s))))
+    }
+}
+
+impl From<TrackedValue> for CheckedValue {
+    fn from(v: TrackedValue) -> Self {
+        CheckedValue(UnsafeCell::new(Some(v)))
     }
 }
 
 macro_rules! unwrap_or_return {
-    ($self:ident, $rhs:ident) => {
-        if let (Some(ref mut v1), Some(ref v2)) = (&mut $self.0, &$rhs.0) {
+    ($self:ident, $inners:ident) => {{
+        if let (Some(ref mut v1), Some(ref v2)) = $inners {
             (v1, v2)
         } else {
             $self.invalidate();
             return;
         }
-    };
+    }};
 }
 
 macro_rules! unwrap_scalars_or_return {
@@ -59,7 +72,8 @@ macro_rules! unwrap_scalars_or_return {
 macro_rules! impl_scalar_only_assign_op {
     ($fn:ident) => {
         fn $fn(&mut self, rhs: &'a Self) {
-            let (v1, v2) = unwrap_or_return!(self, rhs);
+            let inners = (self.inner_mut(), rhs.inner());
+            let (v1, v2) = unwrap_or_return!(self, inners);
             let (s1, s2) = unwrap_scalars_or_return!(self, v1, v2);
             s1.$fn(s2);
         }
@@ -69,7 +83,8 @@ macro_rules! impl_scalar_only_assign_op {
 macro_rules! impl_scalar_only_unknown_op {
     ($fn:ident) => {
         fn $fn(&mut self, rhs: &'a Self) {
-            let (v1, v2) = unwrap_or_return!(self, rhs);
+            let inners = (self.inner_mut(), rhs.inner());
+            let (v1, v2) = unwrap_or_return!(self, inners);
             let (s1, _) = unwrap_scalars_or_return!(self, v1, v2);
             s1.mark_as_unknown();
         }
@@ -85,7 +100,7 @@ impl Castable for CheckedValue {
     }
 
     fn lower_half_assign(&mut self) {
-        if let Some(TrackedValue::Scalar(ref mut s)) = self.0 {
+        if let Some(TrackedValue::Scalar(ref mut s)) = self.inner_mut() {
             // By marking the upper half unknown, we allow JIT / interpreters to have undefined behavior.
             s.mark_upper_half_unknown();
         } else {
@@ -94,7 +109,7 @@ impl Castable for CheckedValue {
     }
 
     fn zero_upper_half_assign(&mut self) {
-        if let Some(TrackedValue::Scalar(ref mut s)) = self.0 {
+        if let Some(TrackedValue::Scalar(ref mut s)) = self.inner_mut() {
             s.lower_half();
         } else {
             self.invalidate();
@@ -131,7 +146,8 @@ impl<'a> BitXorAssign<&'a Self> for CheckedValue {
 macro_rules! impl_checked_shift {
     ($op:ident, $self:ident, $rhs:ident, $width:expr) => {{
         debug_assert!($width == 32 || $width == 64);
-        let (v1, v2) = unwrap_or_return!($self, $rhs);
+        let inners = ($self.inner_mut(), $rhs.inner());
+        let (v1, v2) = unwrap_or_return!($self, inners);
         let (s1, s2) = unwrap_scalars_or_return!($self, v1, v2);
         if $width == 32 {
             if let Some(value) = s2.value32() {
@@ -184,9 +200,7 @@ impl VmScalar for CheckedValue {
     }
 
     fn constant64(value: u64) -> Self {
-        Self(Some(TrackedValue::Scalar(Scalar::constant64(
-            value as u32 as u64,
-        ))))
+        Scalar::constant64(value as u32 as u64).into()
     }
 
     fn constantu32(value: u32) -> Self {
@@ -196,13 +210,13 @@ impl VmScalar for CheckedValue {
 
 impl Verifiable for CheckedValue {
     fn is_valid(&self) -> bool {
-        self.0.is_some()
+        self.inner().is_some()
     }
 }
 
 macro_rules! unwrap_pointer_or_return {
     ($self:ident, $ret:expr) => {
-        if let Some(TrackedValue::Pointer(ref p)) = &$self.0 {
+        if let Some(TrackedValue::Pointer(ref p)) = $self.inner() {
             p
         } else {
             $self.invalidate();
@@ -217,7 +231,7 @@ impl Dereference for CheckedValue {
         let mut ptr = p.clone();
         ptr += &Scalar::constant64(offset as i64 as u64);
         match ptr.get((size / 8) as u8) {
-            Ok(v) => Some(CheckedValue(Some(v))),
+            Ok(v) => Some(v.into()),
             Err(_) => {
                 self.invalidate();
                 None
@@ -226,7 +240,8 @@ impl Dereference for CheckedValue {
     }
 
     unsafe fn set_at(&self, offset: i16, size: usize, value: &Self) -> bool {
-        let v = match value.0 {
+        let inner = value.inner();
+        let v = match inner {
             Some(ref v) => v,
             None => {
                 self.invalidate();
@@ -236,7 +251,7 @@ impl Dereference for CheckedValue {
         let p = unwrap_pointer_or_return!(self, false);
         let mut ptr = p.clone();
         ptr += &Scalar::constant64(offset as i64 as u64);
-        match ptr.set((size / 8) as u8, &v) {
+        match ptr.set((size / 8) as u8, v) {
             Ok(()) => true,
             Err(_) => {
                 self.invalidate();
@@ -248,7 +263,7 @@ impl Dereference for CheckedValue {
 
 macro_rules! unwrap_scalar_or_return {
     ($self:ident, $ret:expr) => {
-        if let Some(TrackedValue::Scalar(ref s)) = &$self.0 {
+        if let Some(TrackedValue::Scalar(ref s)) = $self.inner() {
             s
         } else {
             $self.invalidate();
@@ -304,9 +319,15 @@ impl Atomic for CheckedValue {
     }
 }
 
+impl Clone for CheckedValue {
+    fn clone(&self) -> Self {
+        Self(UnsafeCell::new(self.inner().cloned()))
+    }
+}
+
 impl Debug for CheckedValue {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match &self.0 {
+        match self.inner() {
             Some(TrackedValue::Pointer(p)) => f.write_fmt(format_args!("{:?}", p)),
             Some(TrackedValue::Scalar(s)) => f.write_fmt(format_args!("{:?}", s)),
             None => f.write_str("_"),

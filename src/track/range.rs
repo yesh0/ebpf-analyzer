@@ -81,7 +81,7 @@ impl<Int: RangeItem> RangePair<Int> {
         } else {
             // Computing self > rhs
             // r2.min < r1.max, so overflow impossible
-            let (mut r1, mut r2) = (self.clone(), rhs.clone());
+            let (mut r1, mut r2) = (*self, *rhs);
             r1.min = r1.min.max(r2.min.add(Int::one()));
             r2.max = r2.max.min(r1.max.sub(Int::one()));
             // Computing self <= rhs is simpler
@@ -261,12 +261,12 @@ fn range_gen() -> RangePair<i32> {
 }
 
 #[cfg(test)]
-fn test_varied(
-    ops: &[(
-        fn(&mut RangePair<i32>, y: &RangePair<i32>) -> (),
-        fn(i32, i32) -> i32,
-    )],
-) {
+type Operator = fn(i32, i32) -> i32;
+#[cfg(test)]
+type RangeOperator = fn(&mut RangePair<i32>, y: &RangePair<i32>) -> ();
+
+#[cfg(test)]
+fn test_varied(ops: &[(RangeOperator, Operator)]) {
     use alloc::vec::Vec;
 
     for _ in 0..10000 {
@@ -276,7 +276,7 @@ fn test_varied(
         let results: Vec<RangePair<i32>> = ops
             .iter()
             .map(|(range_op, _)| {
-                let mut result = r1.clone();
+                let mut result = r1;
                 range_op(&mut result, &r2);
                 result
             })
@@ -307,7 +307,7 @@ pub fn test_varied_operants() {
 pub fn test_range_comparison() {
     for _ in 0..10000 {
         let (r1, r2) = (range_gen(), range_gen());
-        let (mut rc1, mut rc2) = (r1.clone(), r2.clone());
+        let (mut rc1, mut rc2) = (r1, r2);
         match rc1.le(&mut rc2) {
             ComparisonResult::Always => assert!(r1.max <= r2.min),
             ComparisonResult::Never => assert!(r1.min > r2.max),

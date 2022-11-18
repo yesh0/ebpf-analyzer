@@ -9,7 +9,7 @@ use core::cell::RefMut;
 use ebpf_consts::*;
 use ebpf_macros::opcode_match;
 
-use crate::{spec::Instruction, vm::context::Fork};
+use crate::{spec::Instruction, interpreter::context::Fork};
 
 use self::{context::VmContext, value::VmValue, vm::Vm};
 

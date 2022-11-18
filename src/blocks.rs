@@ -1,3 +1,5 @@
+use core::cmp::Ordering;
+
 use alloc::vec::Vec;
 
 use crate::{
@@ -98,7 +100,7 @@ impl Boundaries {
                 ParsedInstruction::WideInstruction(w) => (w.instruction, 2),
             };
 
-            if let Some(offset) = insn.is_pseudo_call().or(insn.is_ldimm64_func()) {
+            if let Some(offset) = insn.is_pseudo_call().or_else(|| insn.is_ldimm64_func()) {
                 // It seems the two instructions, despite one being a wide isns,
                 // both have the target address as `pc + 1`.
                 if let Ok(target) = Self::checked_jump(code, pc + 1, offset) {
@@ -264,12 +266,12 @@ impl Boundaries {
             ));
         }
         for i in (label_i + 1)..self.labels.len() {
-            if self.labels[i] == end {
-                return Ok(&self.labels[label_i..=i]);
-            } else if self.labels[i] > end {
-                return Err(VerificationError::IllegalStructure(
+            match self.labels[i].cmp(&end) {
+                Ordering::Equal => return Ok(&self.labels[label_i..=i]),
+                Ordering::Greater => return Err(VerificationError::IllegalStructure(
                     IllegalStructure::BlockOpenEnd,
-                ));
+                )),
+                _ => {},
             }
         }
         Err(VerificationError::IllegalStructure(
@@ -313,7 +315,7 @@ pub fn test_inter_function_jump() {
     let result = FunctionBlock::new(code);
     match result.err() {
         Some(VerificationError::IllegalInstruction(IllegalInstruction::OutOfBoundJump)) => {}
-        _ => assert!(false),
+        _ => panic!(),
     }
 
     let normal: &[u64] = &[

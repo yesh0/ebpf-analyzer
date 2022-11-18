@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 
-use crate::vm::context::VmContext;
+use crate::interpreter::context::VmContext;
 
 use super::{
     checked_value::CheckedValue,
@@ -17,8 +17,18 @@ impl BranchContext {
             branches: Vec::new(),
         }
     }
+}
 
-    pub fn next(&mut self) -> Option<Branch> {
+impl Default for BranchContext {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Iterator for BranchContext {
+    type Item = Branch;
+
+    fn next(&mut self) -> Option<Self::Item> {
         self.branches.pop()
     }
 }

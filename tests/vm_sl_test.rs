@@ -1,6 +1,6 @@
 use std::{num::Wrapping, rc::Rc, cell::RefCell};
 
-use ebpf_analyzer::vm::{
+use ebpf_analyzer::interpreter::{
     run,
     vm::{UncheckedVm, Vm}, context::NoOpContext,
 };
@@ -52,11 +52,11 @@ pub fn test_imm64() {
 
     let code = [
         (BPF_LD | BPF_IMM | BPF_DW) as u64 | (0xDEADBEEFu64 << 32),
-        0 | (0xCAFEBABEu64 << 32),
+        (0xCAFEBABEu64 << 32),
         0,
     ];
     run(&code, &mut vm, &mut NoOpContext{});
-    assert_eq!(vm.reg(0).0, 0xCAFEBABE_DEADBEEFu64);
+    assert_eq!(vm.reg(0).0, 0xCAFE_BABE_DEAD_BEEF_u64);
     assert_eq!(*vm.pc(), 2);
 }
 

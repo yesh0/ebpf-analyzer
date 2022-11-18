@@ -1,9 +1,9 @@
-use core::num::Wrapping;
+use core::{cell::UnsafeCell, num::Wrapping};
 
 use alloc::vec::Vec;
 use ebpf_consts::{READABLE_REGISTER_COUNT, STACK_REGISTER, STACK_SIZE, WRITABLE_REGISTER_COUNT};
 
-use crate::safe::mut_borrow_items;
+use crate::safe::{mut_borrow_items, safe_ref_unsafe_cell};
 
 use super::{
     context::Forker,
@@ -31,6 +31,10 @@ pub trait Vm<Value: VmValue>: Forker<Value, Self> {
     /// Gets the value of a register
     fn ro_reg(&self, i: u8) -> &Value;
     /// Duplicates the reference
+    ///
+    /// # Safety
+    /// It just returns the mut reference.
+    /// Use it to get an reference behind a [RefMut] if you absolutely need it.
     unsafe fn dup(&mut self) -> &mut Self;
     /// Gets the values of two registers
     fn two_regs(&mut self, i: u8, j: u8) -> Option<(&mut Value, &mut Value)>;
@@ -40,40 +44,37 @@ pub trait Vm<Value: VmValue>: Forker<Value, Self> {
     fn update_reg(&mut self, reg: u8);
 }
 
-/// A VM impl
-pub struct UncheckedVm<Value: VmValue> {
+struct UncheckedInnerVm<Value: VmValue> {
     invalid: Option<&'static str>,
     pc: usize,
     registers: [Value; READABLE_REGISTER_COUNT as usize],
     stack: Vec<Value>,
 }
 
+/// A VM impl
+pub struct UncheckedVm<Value: VmValue>(UnsafeCell<UncheckedInnerVm<Value>>);
+
 type Value = Wrapping<u64>;
 
 impl Vm<Wrapping<u64>> for UncheckedVm<Wrapping<u64>> {
     fn is_valid(&self) -> bool {
-        self.invalid.is_none()
+        self.inner().invalid.is_none()
     }
 
     fn invalidate(&self, message: &'static str) {
-        // Fully aware what I am doing
-        unsafe {
-            (*(self as *const Self as *mut Self))
-                .invalid
-                .replace(message);
-        }
+        unsafe { (*self.0.get()).invalid = Some(message) }
     }
 
     fn pc(&mut self) -> &mut usize {
-        &mut self.pc
+        &mut self.0.get_mut().pc
     }
 
     fn reg(&mut self, i: u8) -> &mut Value {
         if i < WRITABLE_REGISTER_COUNT {
-            &mut self.registers[i as usize]
+            &mut self.0.get_mut().registers[i as usize]
         } else {
             self.invalidate("Register not allowed");
-            &mut self.registers[0]
+            &mut self.0.get_mut().registers[0]
         }
     }
 
@@ -85,10 +86,10 @@ impl Vm<Wrapping<u64>> for UncheckedVm<Wrapping<u64>> {
 
     fn ro_reg(&self, i: u8) -> &Value {
         if i < READABLE_REGISTER_COUNT {
-            &self.registers[i as usize]
+            &self.inner().registers[i as usize]
         } else {
             self.invalidate("Register not allowed");
-            &self.registers[0]
+            &self.inner().registers[0]
         }
     }
 
@@ -97,18 +98,22 @@ impl Vm<Wrapping<u64>> for UncheckedVm<Wrapping<u64>> {
     }
 
     fn two_regs(&mut self, i: u8, j: u8) -> Option<(&mut Value, &mut Value)> {
-        mut_borrow_items!(self.registers, [i as usize, j as usize], Value)
+        mut_borrow_items!(self.0.get_mut().registers, [i as usize, j as usize], Value)
     }
 
     fn three_regs(&mut self, i: u8, j: u8, k: u8) -> Option<(&mut Value, &mut Value, &mut Value)> {
-        mut_borrow_items!(self.registers, [i as usize, j as usize, k as usize], Value)
+        mut_borrow_items!(
+            self.0.get_mut().registers,
+            [i as usize, j as usize, k as usize],
+            Value
+        )
     }
 }
 
 impl<Value: VmValue> UncheckedVm<Value> {
     /// Creates a zero-initialized VM
     pub fn new() -> Self {
-        let mut vm = UncheckedVm {
+        let mut vm = UncheckedInnerVm {
             invalid: None,
             pc: 0,
             registers: Default::default(),
@@ -117,6 +122,16 @@ impl<Value: VmValue> UncheckedVm<Value> {
         vm.stack.resize(STACK_SIZE / 8, Value::default());
         vm.registers[STACK_REGISTER as usize] =
             Value::constant64(vm.stack.as_ptr() as u64 + STACK_SIZE as u64);
-        vm
+        UncheckedVm(UnsafeCell::new(vm))
+    }
+
+    fn inner(&self) -> &UncheckedInnerVm<Value> {
+        safe_ref_unsafe_cell(&self.0)
+    }
+}
+
+impl<Value: VmValue> Default for UncheckedVm<Value> {
+    fn default() -> Self {
+        Self::new()
     }
 }

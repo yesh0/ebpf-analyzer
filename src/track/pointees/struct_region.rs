@@ -145,12 +145,10 @@ pub fn test_readable_writable() {
                 } else {
                     assert!(region.set(&Scalar::constant64(offset), size, &v).is_err());
                 }
+            } else if ok {
+                assert!(region.get(&Scalar::constant64(offset), size).is_ok());
             } else {
-                if ok {
-                    assert!(region.get(&Scalar::constant64(offset), size).is_ok());
-                } else {
-                    assert!(region.get(&Scalar::constant64(offset), size).is_err());
-                }
+                assert!(region.get(&Scalar::constant64(offset), size).is_err());
             }
         }
     }

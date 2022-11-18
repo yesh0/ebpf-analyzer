@@ -8,7 +8,7 @@ use crate::{
         scalar,
         TrackedValue::{self, *},
     },
-    vm::{
+    interpreter::{
         context::{Fork, Forker},
         vm::Vm,
     },
@@ -37,7 +37,7 @@ impl BranchState {
 
 macro_rules! unwrap_checked_values {
     ($self:ident, $cv1:ident, $cv2:ident) => {
-        if let (Some(ref mut v1), Some(ref mut v2)) = (&mut $cv1.0, &mut $cv2.0) {
+        if let (Some(ref mut v1), Some(ref mut v2)) = ($cv1.inner_mut(), $cv2.inner_mut()) {
             (v1, v2)
         } else {
             $self.invalidate("Invalid operants");

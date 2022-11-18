@@ -1,6 +1,6 @@
 use std::{num::Wrapping, rc::Rc, cell::RefCell};
 
-use ebpf_analyzer::vm::{
+use ebpf_analyzer::interpreter::{
     run,
     vm::{UncheckedVm, Vm}, context::NoOpContext,
 };

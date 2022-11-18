@@ -1,6 +1,6 @@
 use std::{num::Wrapping, rc::Rc, cell::RefCell};
 
-use ebpf_analyzer::vm::{
+use ebpf_analyzer::interpreter::{
     run,
     vm::{UncheckedVm, Vm}, context::NoOpContext,
 };
@@ -31,7 +31,7 @@ pub fn test_jumps() {
         false, true, true,
     ];
     for (i, op) in compares.iter().enumerate() {
-        assert_jumps(BPF_JMP32 | *op | BPF_X, 3, 2, result[i * 3 + 0]);
+        assert_jumps(BPF_JMP32 | *op | BPF_X, 3, 2, result[i * 3]);
         assert_jumps(BPF_JMP32 | *op | BPF_X, 1, 1, result[i * 3 + 1]);
         assert_jumps(BPF_JMP32 | *op | BPF_X, 0, 1, result[i * 3 + 2]);
     }
@@ -44,7 +44,7 @@ pub fn test_jumps() {
         false, true, true,
     ];
     for (i, op) in compares.iter().enumerate() {
-        assert_jumps(BPF_JMP32 | *op | BPF_X, -3i64 as u64, 2, result[i * 3 + 0]);
+        assert_jumps(BPF_JMP32 | *op | BPF_X, -3i64 as u64, 2, result[i * 3]);
         assert_jumps(BPF_JMP32 | *op | BPF_X, (-1i64) as u64, -1i64 as u64, result[i * 3 + 1]);
         assert_jumps(BPF_JMP32 | *op | BPF_X, -20i64 as u64, -10i64 as u64, result[i * 3 + 2]);
     }

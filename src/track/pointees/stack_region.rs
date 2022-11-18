@@ -109,7 +109,7 @@ impl StackRegion {
     fn mark_as_type(&mut self, start: usize, end: usize, readable: bool) {
         let (byte_offset, mut bit_offset) = Self::bitmap_offset(start);
         let (end_offset, end_bit_offset) = Self::bitmap_offset(end);
-        let bit = if readable { 1 } else { 0 };
+        let bit = u8::from(readable);
         for i in byte_offset..=end_offset {
             let mut info = self.map[i];
             let end_bit = if i == end_offset { end_bit_offset } else { 8 };
@@ -135,6 +135,12 @@ impl StackRegion {
     /// Converts an offset to an index
     fn o2i(offset: usize) -> usize {
         STACK_SIZE / 8 - 1 - offset / 8
+    }
+}
+
+impl Default for StackRegion {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -176,11 +182,8 @@ impl MemoryRegion for StackRegion {
             if end - start == 8 && start % 8 == 0 {
                 let index = Self::o2i(start);
                 if index < self.values.len() {
-                    match &self.values[index] {
-                        StackSlot::Value64(TrackedValue::Pointer(p)) => {
-                            return Ok(TrackedValue::Pointer(p.clone()))
-                        }
-                        _ => {}
+                    if let StackSlot::Value64(TrackedValue::Pointer(p)) = &self.values[index] {
+                        return Ok(TrackedValue::Pointer(p.clone()))
                     }
                 }
             }
@@ -385,8 +388,8 @@ pub fn test_stack_random_access() {
                     TrackedValue::Pointer(_) => POINTER,
                     TrackedValue::Scalar(_) => SCALAR,
                 };
-                for i in (offset * 8 + off as usize)..(offset * 8 + off as usize + 8) {
-                    map[i] = type_info;
+                for v in map.iter_mut().skip(offset * 8 + off as usize).take(8) {
+                    *v = type_info;
                 }
             }
         }
@@ -398,8 +401,8 @@ pub fn test_stack_random_access() {
             let mut readable = true;
             let mut pointer = false;
             let mut scalar = false;
-            for i in offset..(offset + size) {
-                match map[i] {
+            for v in map.iter().skip(offset).take(size) {
+                match *v {
                     UNINIT => readable = false,
                     POINTER => pointer = true,
                     SCALAR => scalar = true,

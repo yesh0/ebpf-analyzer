@@ -5,7 +5,7 @@ use core::{
 
 use bitflags::bitflags;
 
-use super::{pointees::{Pointee}, scalar::Scalar, TrackError, TrackedValue};
+use super::{pointees::Pointee, scalar::Scalar, TrackError, TrackedValue};
 
 bitflags! {
     /// Attributes of the pointer
@@ -116,14 +116,17 @@ impl Sub<&Self> for &Pointer {
     type Output = Option<Scalar>;
 
     fn sub(self, rhs: &Self) -> Self::Output {
-        if self.non_null() && self.is_arithmetic() && rhs.non_null() && rhs.is_arithmetic() {
-            if self.pointee.as_ptr() == rhs.pointee.as_ptr() {
-                let mut result = self.offset.clone();
-                result -= &rhs.offset;
-                return Some(result);
-            }
+        if self.non_null()
+            && self.is_arithmetic()
+            && rhs.non_null()
+            && rhs.is_arithmetic()
+            && self.get_pointing_to() == rhs.get_pointing_to()
+        {
+            let mut result = self.offset.clone();
+            result -= &rhs.offset;
+            return Some(result);
         }
-        return None;
+        None
     }
 }
 

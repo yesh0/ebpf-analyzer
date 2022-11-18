@@ -20,7 +20,13 @@ macro_rules! mut_borrow_items {
     }};
 }
 
+use core::cell::UnsafeCell;
+
 pub(crate) use mut_borrow_items;
+
+pub fn safe_ref_unsafe_cell<T>(cell: &'_ UnsafeCell<T>) -> &'_ T {
+    unsafe { &*cell.get() }
+}
 
 #[test]
 pub fn test_reborrowed() {

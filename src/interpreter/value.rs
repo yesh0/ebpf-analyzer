@@ -81,7 +81,7 @@ impl ShiftAssign<&u64> for u64 {
         if width == 32 {
             *self = ((*self as u32) >> (rhs & 31)) as u64
         } else {
-            *self = *self >> (rhs & 63)
+            *self >>= rhs & 63
         }
     }
 
@@ -89,7 +89,7 @@ impl ShiftAssign<&u64> for u64 {
         if width == 32 {
             *self = ((*self as u32) << (rhs & 31)) as u64
         } else {
-            *self = *self << (rhs & 63)
+            *self <<= rhs & 63
         }
     }
 }
@@ -189,8 +189,16 @@ where
     Self: Sized,
 {
     /// Tries to dereference the pointer
+    /// 
+    /// # Safety
+    /// It is only unsafe for interpreters.
+    /// The verifier does not operate on raw pointers.
     unsafe fn get_at(&self, offset: i16, size: usize) -> Option<Self>;
     /// Tries to assign a value to the pointer
+    /// 
+    /// # Safety
+    /// It is only unsafe for interpreters.
+    /// The verifier does not operate on raw pointers.
     unsafe fn set_at(&self, offset: i16, size: usize, value: &Self) -> bool;
 }
 
@@ -225,7 +233,7 @@ impl Dereference for u64 {
 
 impl Dereference for Wrapping<u64> {
     unsafe fn get_at(&self, offset: i16, size: usize) -> Option<Self> {
-        self.0.get_at(offset, size).map(|i| Wrapping(i))
+        self.0.get_at(offset, size).map(Wrapping)
     }
 
     unsafe fn set_at(&self, offset: i16, size: usize, value: &Self) -> bool {

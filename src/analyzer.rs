@@ -4,7 +4,7 @@ use alloc::{vec::Vec, rc::Rc};
 
 use crate::{
     blocks::{FunctionBlock, FunctionBlocks, IllegalStructure, TERMINAL_PSEUDO_BLOCK},
-    spec::IllegalInstruction, branch::{context::BranchContext, vm::{BranchState, Branch}}, vm::{context::VmContext, run, vm::Vm},
+    spec::IllegalInstruction, branch::{context::BranchContext, vm::{BranchState, Branch}}, interpreter::{context::VmContext, run, vm::Vm},
 };
 
 pub struct Analyzer;

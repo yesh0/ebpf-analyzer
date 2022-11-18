@@ -239,10 +239,8 @@ impl Instruction {
             if self.dst_reg() >= WRITABLE_REGISTER_COUNT {
                 return Err(IllegalInstruction::IllegalRegister);
             }
-        } else {
-            if self.dst_reg() >= READABLE_REGISTER_COUNT {
-                return Err(IllegalInstruction::IllegalRegister);
-            }
+        } else if self.dst_reg() >= READABLE_REGISTER_COUNT {
+            return Err(IllegalInstruction::IllegalRegister);
         }
 
         if IMM {
@@ -276,12 +274,10 @@ impl Instruction {
             BPF_JA => {
                 if XLEN == 32 {
                     Err(IllegalInstruction::IllegalInstruction)
+                } else if self.regs == 0 && self.imm == 0 {
+                    Ok(())
                 } else {
-                    if self.regs == 0 && self.imm == 0 {
-                        Ok(())
-                    } else {
-                        Err(IllegalInstruction::UnusedFieldNotZeroed)
-                    }
+                    Err(IllegalInstruction::UnusedFieldNotZeroed)
                 }
             }
             BPF_CALL => {
@@ -298,12 +294,10 @@ impl Instruction {
             BPF_EXIT => {
                 if XLEN == 32 {
                     Err(IllegalInstruction::IllegalInstruction)
+                } else if self.regs == 0 && self.imm == 0 && self.off == 0 {
+                    Ok(())
                 } else {
-                    if self.regs == 0 && self.imm == 0 && self.off == 0 {
-                        Ok(())
-                    } else {
-                        Err(IllegalInstruction::UnusedFieldNotZeroed)
-                    }
+                    Err(IllegalInstruction::UnusedFieldNotZeroed)
                 }
             }
             _ => self.is_arithmetic_registers_valid::<false>(),
@@ -370,10 +364,8 @@ impl Instruction {
             if self.dst_reg() >= WRITABLE_REGISTER_COUNT {
                 return Err(IllegalInstruction::IllegalRegister);
             }
-        } else {
-            if self.dst_reg() >= READABLE_REGISTER_COUNT {
-                return Err(IllegalInstruction::IllegalRegister);
-            }
+        } else if self.dst_reg() >= READABLE_REGISTER_COUNT {
+            return Err(IllegalInstruction::IllegalRegister);
         }
 
         if self.is_arithmetic_source_immediate() {
@@ -382,16 +374,14 @@ impl Instruction {
             } else {
                 Err(IllegalInstruction::UnusedFieldNotZeroed)
             }
-        } else {
-            if self.imm == 0 {
-                if self.src_reg() < READABLE_REGISTER_COUNT {
-                    Ok(())
-                } else {
-                    Err(IllegalInstruction::IllegalRegister)
-                }
+        } else if self.imm == 0 {
+            if self.src_reg() < READABLE_REGISTER_COUNT {
+                Ok(())
             } else {
-                Err(IllegalInstruction::UnusedFieldNotZeroed)
+                Err(IllegalInstruction::IllegalRegister)
             }
+        } else {
+            Err(IllegalInstruction::UnusedFieldNotZeroed)
         }
     }
 
@@ -427,10 +417,8 @@ impl Instruction {
                     if self.src_reg() >= WRITABLE_REGISTER_COUNT {
                         return Err(IllegalInstruction::IllegalRegister);
                     }
-                } else {
-                    if self.src_reg() >= READABLE_REGISTER_COUNT {
-                        return Err(IllegalInstruction::IllegalRegister);
-                    }
+                } else if self.src_reg() >= READABLE_REGISTER_COUNT {
+                    return Err(IllegalInstruction::IllegalRegister);
                 }
                 if self.imm == 0 {
                     Ok(())
