@@ -98,7 +98,7 @@ fn add_all_combinations(
     }
 }
 
-fn get_const_name(components: &Vec<Component>) -> ConstName {
+fn get_const_name(components: &[Component]) -> ConstName {
     let v: Vec<&str> = components.iter().map(|c| c.0).collect();
     ConstName(v.join("_"))
 }
@@ -120,18 +120,18 @@ fn construct_code(
                     panic!("#{} out of range!", i);
                 }
                 let symbol = &aliases[*i];
-                output.extend(Literal::string(&symbol.as_str()).to_token_stream());
+                output.extend(Literal::string(symbol.as_str()).to_token_stream());
             }
             Replacing::WithRaw(i) => {
                 if aliases.len() <= *i {
                     panic!("#{} out of range!", i);
                 }
                 let symbol = &aliases[*i];
-                if let Ok(tokens) = TokenStream2::from_str(&symbol) {
+                if let Ok(tokens) = TokenStream2::from_str(symbol) {
                     output.extend(tokens);
-                } else if char::is_alphabetic(symbol.chars().nth(0).unwrap()) {
+                } else if char::is_alphabetic(symbol.chars().next().unwrap()) {
                     output
-                        .extend(Ident::new(&symbol.as_str(), Span::call_site()).to_token_stream());
+                        .extend(Ident::new(symbol.as_str(), Span::call_site()).to_token_stream());
                 } else {
                     let joining = &symbol[0..symbol.len() - 1];
                     for c in joining.chars() {
@@ -145,7 +145,7 @@ fn construct_code(
             }
             Replacing::Nested(conditions, code) => {
                 if conditions.matches(enabled) {
-                    construct_code(aliases, enabled, &code, output);
+                    construct_code(aliases, enabled, code, output);
                 }
             }
         }

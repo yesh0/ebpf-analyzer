@@ -43,5 +43,5 @@ extern crate ebpf_consts;
 #[proc_macro]
 pub fn opcode_match(input: TokenStream) -> TokenStream {
     let matches = parse_macro_input!(input as OpcodeMatches);
-    generate(&matches).into()
+    generate(&matches)
 }

@@ -1,7 +1,7 @@
 // This file was partly generated from ../gen.sh
 
 /// Opcode components
-pub const OPCODES: [(&'static str, u8); 59] = [
+pub const OPCODES: [(&str, u8); 59] = [
     ("BPF_LD", 0x00),
     ("BPF_LDX", 0x01),
     ("BPF_ST", 0x02),

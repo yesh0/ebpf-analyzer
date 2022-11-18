@@ -159,7 +159,7 @@ impl Parse for AliasPair {
 impl AliasPair {
     fn find_opcode_component(component: &Ident) -> Option<&'static str> {
         for ele in OPCODES {
-            if ele.0 == component.to_string() {
+            if *component == ele.0 {
                 return Some(ele.0);
             }
         }

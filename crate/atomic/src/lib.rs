@@ -33,6 +33,10 @@ where
 pub mod u32 {
     use core::sync::atomic::AtomicU32;
 
+    /// Creates [AtomicU32] from a raw pointer
+    /// 
+    /// # Safety
+    /// It is a wrapper around `AtomicU32::from_mut`.
     pub unsafe fn from_u32_addr(addr: u64) -> &'static mut AtomicU32 {
         AtomicU32::from_mut(&mut *(addr as *mut u32))
     }
@@ -42,6 +46,10 @@ pub mod u32 {
 pub mod u64 {
     use core::sync::atomic::AtomicU64;
 
+    /// Creates [AtomicU64] from a raw pointer
+    /// 
+    /// # Safety
+    /// It is a wrapper around `AtomicU64::from_mut`.
     pub unsafe fn from_u64_addr(addr: u64) -> &'static mut AtomicU64 {
         AtomicU64::from_mut(&mut *(addr as *mut u64))
     }
@@ -140,6 +148,6 @@ impl Atomic for Wrapping<u64> {
     ) -> Result<Wrapping<u64>, AtomicError> {
         self.0
             .compare_exchange(offset, &expected.0, &rhs.0, size)
-            .map(|i| Wrapping(i))
+            .map(Wrapping)
     }
 }

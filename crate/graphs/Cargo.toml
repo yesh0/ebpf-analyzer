@@ -1,7 +1,0 @@
-[package]
-name = "ebpf-graphs"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-pin-weak = "1.1.0"

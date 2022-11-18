@@ -6,6 +6,14 @@ description = "More than an eBPF verifier"
 repository = "https://githubcom/yesh0/ebpf-analyzer"
 license = "MIT"
 
+[workspace]
+members = [
+    "crate/atomic",
+    "crate/consts",
+    "crate/macros",
+    "crate/lldump",
+]
+
 [features]
 default = ["atomic32", "atomic64"]
 atomic32 = ["ebpf-atomic/atomic32"]
@@ -14,7 +22,6 @@ atomic64 = ["ebpf-atomic/atomic64"]
 [dependencies]
 ebpf-atomic = { path = "./crate/atomic", optional = true }
 ebpf-consts = { path = "./crate/consts" }
-ebpf-graphs = { path = "./crate/graphs" }
 ebpf-macros = { path = "./crate/macros" }
 
 bitflags = "1.3"
