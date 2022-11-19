@@ -1,9 +1,13 @@
+//! This module defines a [Scalar] type.
+
 use core::{
     fmt::Debug,
     ops::{AddAssign, BitAndAssign, BitOrAssign, BitXorAssign, MulAssign, SubAssign},
 };
 
 use num_traits::{AsPrimitive, PrimInt};
+
+use crate::interpreter::value::{NegAssign, ByteSwap};
 
 use super::{
     range::{RangePair, SyncFromUpper},
@@ -23,9 +27,15 @@ pub struct Scalar {
     pub(super) urange32: RangePair<u32>,
 }
 
+/// Shift operations
+/// 
+/// - `WIDTH`: in bits (32 or 64)
 pub trait ShiftAssign<const WIDTH: u8, Rhs = Self> {
+    /// Left shift
     fn shl_assign(&mut self, rhs: Rhs);
+    /// Unsigned right shift
     fn shr_assign(&mut self, rhs: Rhs);
+    /// Sign extending right shift
     fn ashr_assign(&mut self, rhs: Rhs);
 }
 
@@ -68,6 +78,7 @@ impl Scalar {
         self.urange32.mark_as_known(value);
     }
 
+    /// Discards any information that the scalar holds
     pub fn mark_as_unknown(&mut self) {
         self.irange.mark_as_unknown();
         self.irange32.mark_as_unknown();
@@ -76,12 +87,14 @@ impl Scalar {
         self.bits = NumBits::unknown();
     }
 
+    /// Marks the upper half as fully unknown
     pub fn mark_upper_half_unknown(&mut self) {
         self.irange.mark_as_unknown();
         self.urange.mark_as_unknown();
         self.bits = NumBits::pruned(self.bits.mask() | 0xFFFF_FFFF_0000_0000, self.bits.value())
     }
 
+    /// Returns `Some(constant)` if the lower part of this scalar is considered fully known
     pub fn value32(&self) -> Option<u32> {
         if self.is_constant::<32>().unwrap_or(false) {
             Some(self.urange32.max)
@@ -90,6 +103,7 @@ impl Scalar {
         }
     }
 
+    /// Returns `Some(constant)` if this scalar is considered fully known
     pub fn value64(&self) -> Option<u64> {
         if self.is_constant::<64>().unwrap_or(false) {
             Some(self.urange.max)
@@ -426,10 +440,53 @@ impl Scalar {
         }
     }
 
+    /// Creates an unknown scalar
     pub fn unknown() -> Scalar {
         let mut result = Scalar::constant64(0);
         result.mark_as_unknown();
         result
+    }
+
+    /// Creates a scalar of a constant value
+    pub fn constant64(value: u64) -> Self {
+        Scalar {
+            bits: NumBits::exact(value),
+            irange: RangePair::exact(value as i64),
+            irange32: RangePair::exact(value as i32),
+            urange: RangePair::exact(value),
+            urange32: RangePair::exact(value as u32),
+        }
+    }
+
+    /// Determines if this scalar might match that certain integer
+    pub fn contains<
+        Int: PrimInt + AsPrimitive<i64> + AsPrimitive<u64> + AsPrimitive<i32> + AsPrimitive<u32>,
+    >(
+        &self,
+        value: Int,
+    ) -> bool {
+        let width = Int::zero().count_zeros();
+        if width == 32 {
+            self.bits
+                .lower_half()
+                .contains(AsPrimitive::<u32>::as_(value) as u64)
+                && if Int::min_value() == Int::zero() {
+                    // u32
+                    self.urange32.contains(value.as_())
+                } else {
+                    // i32
+                    self.irange32.contains(value.as_())
+                }
+        } else {
+            self.bits.contains(value.as_())
+                && (if Int::min_value() == Int::zero() {
+                    // u64
+                    self.urange.contains(value.as_())
+                } else {
+                    // i64
+                    self.irange.contains(value.as_())
+                })
+        }
     }
 }
 
@@ -439,25 +496,19 @@ impl Default for Scalar {
     }
 }
 
-pub trait NegAssign {
-    /// `self = -self`
-    fn neg_assign(&mut self);
-}
-
 impl NegAssign for Scalar {
     fn neg_assign(&mut self) {
         self.mark_as_unknown();
     }
 }
 
-pub trait SwapAssign {
-    /// `self = byte/word/dword_swap(self)`
-    fn swap_assign(&mut self, width: u8);
-}
+impl ByteSwap for Scalar {
+    fn host_to_le(&mut self, _width: i32) {
+        self.mark_as_unknown()
+    }
 
-impl SwapAssign for Scalar {
-    fn swap_assign(&mut self, _: u8) {
-        self.mark_as_unknown();
+    fn host_to_be(&mut self, _width: i32) {
+        self.mark_as_unknown()
     }
 }
 
@@ -582,48 +633,6 @@ impl BitXorAssign<&Self> for Scalar {
         self.urange.max = self.bits.max();
         self.update_irange::<64>(rhs);
         self.sync_bounds();
-    }
-}
-
-impl Scalar {
-    pub fn constant64(value: u64) -> Self {
-        Scalar {
-            bits: NumBits::exact(value),
-            irange: RangePair::exact(value as i64),
-            irange32: RangePair::exact(value as i32),
-            urange: RangePair::exact(value),
-            urange32: RangePair::exact(value as u32),
-        }
-    }
-
-    pub fn contains<
-        Int: PrimInt + AsPrimitive<i64> + AsPrimitive<u64> + AsPrimitive<i32> + AsPrimitive<u32>,
-    >(
-        &self,
-        value: Int,
-    ) -> bool {
-        let width = Int::zero().count_zeros();
-        if width == 32 {
-            self.bits
-                .lower_half()
-                .contains(AsPrimitive::<u32>::as_(value) as u64)
-                && if Int::min_value() == Int::zero() {
-                    // u32
-                    self.urange32.contains(value.as_())
-                } else {
-                    // i32
-                    self.irange32.contains(value.as_())
-                }
-        } else {
-            self.bits.contains(value.as_())
-                && (if Int::min_value() == Int::zero() {
-                    // u64
-                    self.urange.contains(value.as_())
-                } else {
-                    // i64
-                    self.irange.contains(value.as_())
-                })
-        }
     }
 }
 

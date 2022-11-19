@@ -1,3 +1,9 @@
+//! This module defines trais used by the interpreter:
+//! - [VmContext]
+//! - [Forker]
+//! 
+//! Also, simplistic implementations are provided for [Wrapping<u64>].
+
 use core::{cell::RefCell, num::Wrapping};
 
 use alloc::rc::Rc;
@@ -9,6 +15,7 @@ use super::{
 
 /// Execution context for a VM, designed for verifier branch tracking
 pub trait VmContext<Value: VmValue, V: Vm<Value>> {
+    /// Adds a pending branch to the context, allowing outer caller to keep exploring new branches
     fn add_pending_branch(&mut self, vm: Rc<RefCell<V>>);
 }
 
@@ -22,7 +29,13 @@ impl<Value: VmValue, V: Vm<Value>> VmContext<Value, V> for NoOpContext {
 
 /// A fork, representing a conditional jump
 pub struct Fork {
+    /// Where a conditional jump instruction jumps to if the condition were `true`
+    /// 
+    /// This is not an offset, and is directly assigned to the PC of the VM.
     pub target: usize,
+    /// Where a conditional jump instruction jumps to if the condition were `false`
+    /// 
+    /// This is not an offset, and is directly assigned to the PC of the VM.
     pub fall_through: usize,
 }
 

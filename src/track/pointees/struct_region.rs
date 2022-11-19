@@ -1,3 +1,5 @@
+//! See [StructRegion].
+
 use core::cell::RefCell;
 
 use alloc::{vec::Vec, rc::Rc};
@@ -34,6 +36,10 @@ pub struct StructRegion {
 }
 
 impl StructRegion {
+    /// Creates a new struct region from the pointers and the map
+    /// 
+    /// The caller should ensure that the number of pointers matches
+    /// pointers used the the region map, or else it will just panic.
     pub fn new(pointers: Vec<Pointer>, region_map: &'static [i8]) -> StructRegion {
         StructRegion {
             id: 0,

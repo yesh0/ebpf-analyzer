@@ -1,3 +1,5 @@
+//! See [BranchContext] and [VmContext].
+
 use alloc::vec::Vec;
 
 use crate::interpreter::context::VmContext;
@@ -7,11 +9,13 @@ use super::{
     vm::{Branch, BranchState},
 };
 
+/// A simple context collecting all unexplored branches
 pub struct BranchContext {
     branches: Vec<Branch>,
 }
 
 impl BranchContext {
+    /// Creates an empty context
     pub fn new() -> BranchContext {
         BranchContext {
             branches: Vec::new(),

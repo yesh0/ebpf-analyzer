@@ -1,4 +1,11 @@
 //! Implements a generic interpreter and a tiny VM.
+//! 
+//! The interpreter is designed to run eBPF intructions
+//! on a virtual [Vm], backed by a value implementation [VmValue],
+//! which can get transparently replaced from [u64] with
+//! a value type with verification purposes like [crate::branch::checked_value::CheckedValue].
+//! 
+//! It also heavily uses the [opcode_match] macro, which messes around the code pieces.
 
 pub mod context;
 pub mod helper;
@@ -250,10 +257,10 @@ pub fn run<Value: VmValue, M: Vm<Value>, C: VmContext<Value, M>>(
             // Store / load
             [[BPF_LDX: LDX, BPF_STX: STX, BPF_ST: ST], [BPF_MEM: MEM],
              [
-                BPF_B: "8",
-                BPF_H: "16",
-                BPF_W: "32",
-                BPF_DW: "64",
+                BPF_B: "1",
+                BPF_H: "2",
+                BPF_W: "4",
+                BPF_DW: "8",
              ]
             ] => {
                 const SIZE: usize = #=2;
@@ -296,11 +303,11 @@ pub fn run<Value: VmValue, M: Vm<Value>, C: VmContext<Value, M>>(
             }
             #[cfg(feature = "atomic32")]
             [[BPF_STX: STX], [BPF_ATOMIC: ATOMIC], [BPF_W: W]] => {
-                run_atomic(insn, vm, 32);
+                run_atomic(insn, vm, 4);
             }
             #[cfg(feature = "atomic64")]
             [[BPF_STX: STX], [BPF_ATOMIC: ATOMIC], [BPF_DW: DW]] => {
-                run_atomic(insn, vm, 64);
+                run_atomic(insn, vm, 8);
             }
             _ => {
                 vm.invalidate("Unrecognized opcode");

@@ -1,3 +1,5 @@
+//! See [EmptyRegion].
+
 use core::cell::RefCell;
 
 use alloc::rc::Rc;
@@ -14,6 +16,7 @@ use super::{MemoryRegion, SafeClone, Pointee};
 pub struct EmptyRegion(usize);
 
 impl EmptyRegion {
+    /// Creates an empty region instance
     pub fn instance() -> Pointee {
         Rc::new(RefCell::new(EmptyRegion(0)))
     }

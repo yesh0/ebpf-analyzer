@@ -1,3 +1,5 @@
+//! An analyzer
+
 use core::cell::RefCell;
 
 use alloc::{vec::Vec, rc::Rc};
@@ -7,13 +9,19 @@ use crate::{
     spec::IllegalInstruction, branch::{context::BranchContext, vm::{BranchState, Branch}}, interpreter::{context::VmContext, run, vm::Vm},
 };
 
+/// The analyzer (or eBPF verifier)
 pub struct Analyzer;
 
+/// Verification error
 #[derive(Debug)]
 pub enum VerificationError {
+    /// See [IllegalStructure]
     IllegalStructure(IllegalStructure),
+    /// Illegal instruction
     IllegalInstruction(IllegalInstruction),
+    /// Illegal DAG
     IllegalGraph,
+    /// Invalid operation
     IllegalStateChange(Branch),
 }
 
@@ -24,6 +32,7 @@ impl From<IllegalInstruction> for VerificationError {
 }
 
 impl Analyzer {
+    /// Analyze an eBPF program
     pub fn analyze(code: &[u64]) -> Result<usize, VerificationError> {
         let blocks = FunctionBlock::new(code)?;
         Analyzer::has_unreachable_block(&blocks)?;

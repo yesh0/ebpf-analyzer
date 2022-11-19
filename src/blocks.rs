@@ -1,3 +1,5 @@
+//! Block level validation
+
 use core::cmp::Ordering;
 
 use alloc::vec::Vec;
@@ -7,11 +9,13 @@ use crate::{
     spec::{CodeOffset, IllegalInstruction, Instruction, JumpInstruction, ParsedInstruction},
 };
 
-pub type ByteOffset = usize;
+/// Id of a code block
 pub type BlockId = usize;
 
+/// Block id of a terminal block (pointed to by `BPF_EXIT` blocks)
 pub const TERMINAL_PSEUDO_BLOCK: usize = usize::MAX;
 
+/// Functions
 pub struct FunctionBlock {
     /// Start offsets of each block
     pub block_starts: Vec<CodeOffset>,
@@ -21,11 +25,15 @@ pub struct FunctionBlock {
     pub to: Vec<Vec<usize>>,
 }
 
+/// A collection of [FunctionBlock]
 pub type FunctionBlocks = Vec<FunctionBlock>;
 
+/// Error when we cannot parse the code into blocks
 #[derive(Debug, PartialEq, Eq)]
 pub enum IllegalStructure {
+    /// The last block does not ends with an unconditional jump or exit instruction
     BlockOpenEnd,
+    /// An empty block or program
     Empty,
 }
 
@@ -281,11 +289,13 @@ impl Boundaries {
 }
 
 impl FunctionBlock {
+    /// Parses the eBPF code into function blocks
     pub fn new(code: &[u64]) -> Result<Vec<FunctionBlock>, VerificationError> {
         let boundaries = Boundaries::sorted_boundaries(code)?;
         boundaries.parse_functions(code)
     }
 
+    /// Returns the function count
     pub fn block_count(&self) -> usize {
         self.block_starts.len()
     }

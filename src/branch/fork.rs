@@ -1,3 +1,5 @@
+//! This module implements the [Forker] for [BranchState].
+
 use core::cell::RefCell;
 
 use alloc::rc::Rc;

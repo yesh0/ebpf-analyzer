@@ -1,3 +1,8 @@
+//! This modules contains an implementation of [Vm] dedicated to eBPF verification: [BranchState].
+//! 
+//! Since the VM branches when doing conditional jumps (see [super::fork]),
+//! usually the VM is kept behind an [Rc] with [Branch].
+
 use core::{
     cell::{RefCell, UnsafeCell},
     fmt::Debug,
@@ -19,6 +24,7 @@ use crate::{
 
 use super::checked_value::CheckedValue;
 
+/// Inner state of [BranchState]
 struct InnerState {
     pc: usize,
     invalid: Option<&'static str>,
@@ -28,8 +34,15 @@ struct InnerState {
 }
 
 /// The state of the verifying machine at a certain point
+/// 
+/// It contains, for now, the following information:
+/// - the program counter
+/// - validity of the current execution path
+/// - managed memory regions (including a stack)
+/// - registers
 pub struct BranchState(UnsafeCell<InnerState>);
 
+/// [BranchState] wrapped in a [RefCell] in an [Rc]
 pub type Branch = Rc<RefCell<BranchState>>;
 
 impl BranchState {
@@ -61,7 +74,7 @@ impl BranchState {
         Self(UnsafeCell::new(state))
     }
 
-    pub fn get_region(&self, id: usize) -> Pointee {
+    fn get_region(&self, id: usize) -> Pointee {
         if id == 0 {
             self.inner().stack.clone()
         } else {
@@ -204,7 +217,7 @@ fn test_clone_or_not(clone: bool) {
         .set(offset, 4, &TrackedValue::Scalar(Scalar::constant64(1)))
         .is_ok());
     for i in 2..10 {
-        match unsafe { vm.ro_reg(10).get_at(-4, 32) } {
+        match unsafe { vm.ro_reg(10).get_at(-4, 4) } {
             Some(v) => {
                 if let Some(TrackedValue::Scalar(s)) = v.inner() {
                     assert!(s.value64().unwrap() == i - 1);
@@ -218,7 +231,7 @@ fn test_clone_or_not(clone: bool) {
             .borrow_mut()
             .set(offset, 4, &TrackedValue::Scalar(Scalar::constant64(i)))
             .is_ok());
-        match unsafe { vm.ro_reg(10).get_at(-4, 32) } {
+        match unsafe { vm.ro_reg(10).get_at(-4, 4) } {
             Some(v) => {
                 if let Some(TrackedValue::Scalar(s)) = v.inner() {
                     assert!(s.value64().unwrap() == i, "{}, {}", s.value64().unwrap(), i);

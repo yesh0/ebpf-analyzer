@@ -1,3 +1,5 @@
+//! This module defines a [Pointer] type, keeping offset and permission info about a region.
+
 use core::{
     fmt::Debug,
     ops::{AddAssign, Sub, SubAssign},
@@ -39,22 +41,28 @@ pub struct Pointer {
 }
 
 impl Pointer {
+    /// Returns `true` if the pointer is never null
     pub fn non_null(&self) -> bool {
         self.attributes.contains(PointerAttributes::NON_NULL)
     }
+    /// Sets the pointer as never null
     pub fn set_non_null(&mut self) {
         self.attributes.set(PointerAttributes::NON_NULL, true)
     }
+    /// Returns `true` if the memory region pointed to by this pointer is readable
     pub fn is_readable(&self) -> bool {
         self.attributes.contains(PointerAttributes::READABLE)
     }
+    /// Returns `true` if the memory region pointed to by this pointer is writable
     pub fn is_mutable(&self) -> bool {
         self.attributes.contains(PointerAttributes::MUTABLE)
     }
+    /// Returns `true` if arithmetics on this pointer is allowed
     pub fn is_arithmetic(&self) -> bool {
         self.attributes.contains(PointerAttributes::ARITHMETIC)
     }
 
+    /// Creates a new pointer
     pub fn new(attributes: PointerAttributes, pointee: Pointee) -> Pointer {
         Pointer {
             attributes,
@@ -63,6 +71,9 @@ impl Pointer {
         }
     }
 
+    /// Tries to read from the pointed memory
+    /// 
+    /// - `size`: in bytes
     pub fn get(&mut self, size: u8) -> Result<TrackedValue, TrackError> {
         if self.non_null() {
             if self.is_readable() {
@@ -75,6 +86,9 @@ impl Pointer {
         }
     }
 
+    /// Tries to write to the pointed memory
+    /// 
+    /// - `size`: in bytes
     pub fn set(&mut self, size: u8, value: &TrackedValue) -> Result<(), TrackError> {
         if self.non_null() {
             if self.is_mutable() {
@@ -87,14 +101,17 @@ impl Pointer {
         }
     }
 
+    /// Checks whether this pointer points to a memory region of the same id
     pub fn is_pointing_to(&self, region: usize) -> bool {
         self.get_pointing_to() == region
     }
 
+    /// Gets the memory region id
     pub fn get_pointing_to(&self) -> usize {
         self.pointee.borrow().get_id()
     }
 
+    /// Sets the pointer to point to another region
     pub fn redirect(&mut self, region: Pointee) {
         self.pointee = region;
     }

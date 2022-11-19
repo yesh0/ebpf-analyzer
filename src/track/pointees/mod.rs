@@ -1,3 +1,5 @@
+//! This module contains implementations to keep track of memory structures.
+
 use core::{cell::RefCell, fmt::Debug};
 
 use alloc::rc::Rc;
@@ -25,9 +27,13 @@ pub trait SafeClone {
 
 /// A memory region that checks memory access
 pub trait MemoryRegion: SafeClone + Debug {
-    // - `size`: in bytes
+    /// Tries to read from the region
+    /// 
+    ///  - `size`: in bytes
     fn get(&mut self, offset: &Scalar, size: u8) -> Result<TrackedValue, TrackError>;
-    // - `size`: in bytes
+    /// Tries to write to the region
+    /// 
+    ///  - `size`: in bytes
     fn set(&mut self, offset: &Scalar, size: u8, value: &TrackedValue) -> Result<(), TrackError>;
 }
 

@@ -2,6 +2,8 @@
 
 #![no_std]
 
+#![forbid(missing_docs)]
+
 extern crate alloc;
 
 extern crate ebpf_consts;

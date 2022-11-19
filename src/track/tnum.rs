@@ -1,3 +1,5 @@
+//! This module defines [NumBits], following algorithms in `tnum` in Linux.
+
 use core::{ops::{Add, Sub, Mul, Shl, Shr, BitAnd, BitOr, BitXor, Not}, fmt::Debug};
 
 use num_traits::{Bounded, Signed, AsPrimitive};

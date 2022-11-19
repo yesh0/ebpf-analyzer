@@ -1,8 +1,22 @@
+//! This module makes [Scalar] [Comparable], generating a [ComparisonResult].
+
 use super::scalar::Scalar;
 
+/// The predicted comparison result
 pub enum ComparisonResult<T> {
+    /// The comparison always yields `true`
     Always,
+    /// The comparison always yields `false`
     Never,
+    /// The comparison may yield `true` or `false`
+    /// 
+    /// The inner pair `(t1, t2)` is guaranteed that:
+    /// - the possible values of `(t1, t2)` are subsets of the original `(self, rhs)`;
+    /// - `t1.the_used_op(t2)` yields either `Never` or `Perhaps`, and never `Always`.
+    /// 
+    /// Meanwhile, `(self, rhs)` is modified in place, such that:
+    /// - the possible values of `(self, rhs)` are subsets of the original `(self, rhs)`;
+    /// - `t1.the_used_op(t2)` yields either `Always` or `Perhaps`, and never `Never`.
     Perhaps((T, T)),
 }
 

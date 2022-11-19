@@ -1,8 +1,11 @@
+//! This module contains the instruction verification according to the instruction set specification.
+
 use core::fmt::Debug;
 
 use ebpf_consts::*;
 use ebpf_consts::mask::*;
 
+/// Instruction offset
 pub type CodeOffset = usize;
 
 /// BPF instruction
@@ -11,46 +14,71 @@ pub type CodeOffset = usize;
 #[derive(Clone, Copy)]
 #[repr(C)]
 pub struct Instruction {
+    /// opcode
     pub opcode: u8,
+    /// registers (lower four bits: dst_reg, higher four bits: src_reg)
     pub regs: u8,
+    /// offset
     pub off: i16,
+    /// imm
     pub imm: i32,
 }
 
 /// BPF wide instruction
 pub struct WideInstruction {
+    /// The first 64-bit value
     pub instruction: Instruction,
+    /// The following 64-bit value
+    /// 
+    /// No, this is not `imm64`.
     pub imm: i64,
 }
 
 /// Parsed instruction result
 pub enum ParsedInstruction {
+    /// Apparently illegal instruction
     None,
+    /// Seemingly a 64-bit instruction
     Instruction(Instruction),
+    /// Seemingly a 128-bit instruction
     WideInstruction(WideInstruction),
 }
 
 /// Basic jump instruction classification
 pub enum JumpInstruction {
+    /// An unconditional jump
     Unconditional(i16),
+    /// A conditional jump
     Conditional(i16),
+    /// Exits
     Exit,
 }
 
+/// Illegal instruction according to the spec
 #[derive(Debug, PartialEq, Eq)]
 pub enum IllegalInstruction {
+    /// Unrecognized opcode
     IllegalOpCode,
+    /// Non-existent / not readable / not writable register
     IllegalRegister,
+    /// General error
     IllegalInstruction,
+    /// Unsupported legacy instruction
     LegacyInstruction,
+    /// Unused fields must be zeroed
     UnusedFieldNotZeroed,
+    /// Atomic width other than 32 and 64
     UnsupportedAtomicWidth,
+    /// Tries to jump right into an 128-bit instruction
     UnalignedJump,
+    /// Jumps out of the whole program
     OutOfBoundJump,
+    /// Jumps out of the current function
     OutOfBoundFunction,
 }
 
 impl ParsedInstruction {
+    /// Validates the instruction
     pub fn validate(&self) -> Result<(), IllegalInstruction> {
         match self {
             ParsedInstruction::None => Err(IllegalInstruction::IllegalInstruction),
@@ -61,22 +89,27 @@ impl ParsedInstruction {
 }
 
 impl WideInstruction {
+    /// `insn0.imm`
     pub fn imm0(&self) -> i32 {
         self.instruction.imm
     }
 
+    /// `insn1.imm`
     pub fn imm1(&self) -> i32 {
         (self.imm >> 32) as i32
     }
 
+    /// `insn0.imm | (insn1.imm << 32)`
     pub fn imm64(&self) -> u64 {
         (self.imm0() as u32 as u64) | ((self.imm as u64 >> 32) << 32)
     }
 
-    pub fn off1(&self) -> i32 {
+    /// Unused part in the second 64 bits
+    fn off1(&self) -> i32 {
         self.imm as i32
     }
 
+    /// Validates the instruction
     pub fn validate(&self) -> Result<(), IllegalInstruction> {
         if self.instruction.is_wide() {
             let imm1 = match self.instruction.src_reg() {
@@ -103,6 +136,7 @@ impl WideInstruction {
 }
 
 impl Instruction {
+    /// Packs fields into a `u64` instruction
     pub fn pack(opcode: u8, src_reg: u8, dst_reg: u8, offset: i16, imm: i32) -> u64 {
         let opcode = opcode as u64;
         let src_reg = src_reg as u64;
@@ -113,6 +147,7 @@ impl Instruction {
         opcode | (dst_reg << 8) | (src_reg << (8 + 4)) | (offset << 16) | (imm << 32)
     }
 
+    /// Gets the opcode
     pub fn opcode(code: u64) -> u8 {
         (code & BPF_OPCODE_MASK) as u8
     }
@@ -176,14 +211,19 @@ impl Instruction {
         }
     }
 
+    /// `src_reg`
     pub fn src_reg(self) -> u8 {
         self.regs >> 4
     }
 
+    /// `dst_reg`
     pub fn dst_reg(self) -> u8 {
         self.regs & 0x0F
     }
 
+    /// Returns `Some(destination)` for jump instructions (other than BPF_CALL)
+    /// 
+    /// See [JumpInstruction].
     pub fn jumps_to(self) -> Option<JumpInstruction> {
         if is_jump(self.opcode) {
             let operation = self.opcode & BPF_OPCODE_JMP_MASK;
@@ -201,6 +241,7 @@ impl Instruction {
         }
     }
 
+    /// Returns `true` if it is a call instruction with [BPF_CALL_PSEUDO]
     pub fn is_pseudo_call(self) -> Option<i32> {
         if self.opcode == BPF_JMP_CALL && self.src_reg() == BPF_CALL_PSEUDO {
             Some(self.imm)
@@ -209,6 +250,7 @@ impl Instruction {
         }
     }
 
+    /// Returns `true` if it is a wide instruction with [BPF_IMM64_FUNC]
     pub fn is_ldimm64_func(self) -> Option<i32> {
         if self.is_wide() && self.src_reg() == BPF_IMM64_FUNC {
             Some(self.imm)
@@ -353,8 +395,8 @@ impl Instruction {
         }
     }
 
-    pub fn is_arithmetic_source_immediate(self) -> bool {
-        (self.opcode & BPF_OPCODE_SRC_MASK) == 0
+    fn is_arithmetic_source_immediate(self) -> bool {
+        (self.opcode & BPF_OPCODE_SRC_MASK) == BPF_K
     }
 
     fn is_arithmetic_registers_valid<const WRITES_TO_DST: bool>(

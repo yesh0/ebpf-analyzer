@@ -1,3 +1,7 @@
+//! [CheckedValue] wraps up [TrackedValue], implements the [VmValue] trait
+//! and is used with [super::vm::BranchState] in [crate::interpreter::run]
+//! to deduce possible values.
+
 use core::{cell::UnsafeCell, fmt::Debug, ops::*};
 
 use ebpf_atomic::{Atomic, AtomicError};
@@ -7,6 +11,10 @@ use crate::{
     track::{scalar::Scalar, TrackedValue},
 };
 
+/// A value wrapping up [TrackedValue] while also tracking its validity
+/// 
+/// While [TrackedValue] only implements algorithm to track individual values,
+/// [CheckedValue] stores extra info for validity checking and branch evaluation.
 #[derive(Default)]
 pub struct CheckedValue(UnsafeCell<Option<TrackedValue>>);
 
@@ -230,7 +238,7 @@ impl Dereference for CheckedValue {
         let p = unwrap_pointer_or_return!(self, None);
         let mut ptr = p.clone();
         ptr += &Scalar::constant64(offset as i64 as u64);
-        match ptr.get((size / 8) as u8) {
+        match ptr.get(size as u8) {
             Ok(v) => Some(v.into()),
             Err(_) => {
                 self.invalidate();
@@ -251,7 +259,7 @@ impl Dereference for CheckedValue {
         let p = unwrap_pointer_or_return!(self, false);
         let mut ptr = p.clone();
         ptr += &Scalar::constant64(offset as i64 as u64);
-        match ptr.set((size / 8) as u8, v) {
+        match ptr.set(size as u8, v) {
             Ok(()) => true,
             Err(_) => {
                 self.invalidate();
@@ -274,17 +282,14 @@ macro_rules! unwrap_scalar_or_return {
 
 impl Atomic for CheckedValue {
     fn fetch_add(&self, offset: i16, rhs: &Self, size: usize) -> Result<CheckedValue, AtomicError> {
-        if size != 32 && size != 64 {
+        if size != 4 && size != 8 {
             return Err(AtomicError::UnsupportedBitness);
         }
         let p = unwrap_pointer_or_return!(self, Err(AtomicError::IllegalAccess));
         let _ = unwrap_scalar_or_return!(rhs, Err(AtomicError::IllegalAccess));
         let mut ptr = p.clone();
         ptr += &Scalar::constant64(offset as i64 as u64);
-        if ptr
-            .set(size as u8, &TrackedValue::Scalar(Scalar::unknown()))
-            .is_err()
-        {
+        if ptr.get(size as u8).is_err() || ptr.set(size as u8, &Scalar::unknown().into()).is_err() {
             Err(AtomicError::IllegalAccess)
         } else {
             Ok(Scalar::unknown().into())

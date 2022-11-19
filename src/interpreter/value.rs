@@ -1,6 +1,9 @@
 //! This file defines some traits used by the VM and the interpreter
-//!
-//! These traits
+//! 
+//! The main trait is [VmValue],
+//! which should represent the available value manipulation operations in eBPF spec.
+//! 
+//! An implementation for [Wrapping<u64>] is provided.
 
 use core::ops::*;
 use core::num::Wrapping;
@@ -11,8 +14,11 @@ use ebpf_atomic::Atomic;
 ///
 /// It only handles truncation.
 pub trait Castable {
+    /// Clones the lower half of the values
     fn lower_half(&self) -> Self;
+    /// Signifies that the VM only needs the lower half of the value
     fn lower_half_assign(&mut self);
+    /// Zeroes the upper half of self while keeping the lower half
     fn zero_upper_half_assign(&mut self);
 }
 
@@ -46,6 +52,7 @@ impl Castable for Wrapping<u64> {
 
 /// Used to validate a value
 pub trait Verifiable {
+    /// Returns `false` if the value is ever invalidated
     fn is_valid(&self) -> bool;
 }
 
@@ -63,8 +70,17 @@ impl Verifiable for Wrapping<u64> {
 
 /// Signed right shift, since we have no way to track the sign for `u64`
 pub trait ShiftAssign<Rhs = Self> {
+    /// Sign extending right shift
+    /// 
+    /// The bit `width` is either `32` or `64`.
     fn signed_shr(&mut self, rhs: Rhs, width: u8);
+    /// Unsigned right shift
+    /// 
+    /// The bit `width` is either `32` or `64`.
     fn r_shift(&mut self, rhs: Rhs, width: u8);
+    /// Left shift
+    /// 
+    /// The bit `width` is either `32` or `64`.
     fn l_shift(&mut self, rhs: Rhs, width: u8);
 }
 
@@ -110,6 +126,7 @@ impl ShiftAssign<&Wrapping<u64>> for Wrapping<u64> {
 
 /// `Neg` trait for unsigned types, since we have no way to track the sign for `u64`
 pub trait NegAssign {
+    /// Self-assigns its negated value
     fn neg_assign(&mut self);
 }
 
@@ -127,7 +144,13 @@ impl NegAssign for Wrapping<u64> {
 
 /// Implements the BPF_END operation
 pub trait ByteSwap {
+    /// Swaps the bytes from host endianness to little endian
+    /// 
+    /// TODO: Check against Linux spec / implementation for detailed explanation
     fn host_to_le(&mut self, width: i32);
+    /// Swaps the bytes from host endianness to big endian
+    /// 
+    /// TODO: Check against Linux spec / implementation for detailed explanation
     fn host_to_be(&mut self, width: i32);
 }
 
@@ -190,11 +213,15 @@ where
 {
     /// Tries to dereference the pointer
     /// 
+    /// - `size`: in bytes
+    /// 
     /// # Safety
     /// It is only unsafe for interpreters.
     /// The verifier does not operate on raw pointers.
     unsafe fn get_at(&self, offset: i16, size: usize) -> Option<Self>;
     /// Tries to assign a value to the pointer
+    /// 
+    /// - `size`: in bytes
     /// 
     /// # Safety
     /// It is only unsafe for interpreters.
@@ -210,10 +237,10 @@ impl Dereference for u64 {
     unsafe fn get_at(&self, offset: i16, size: usize) -> Option<Self> {
         let ptr = unchecked_add(*self, offset);
         Some(match size {
-            8 => *(ptr as *const u8) as u64,
-            16 => *(ptr as *const u16) as u64,
-            32 => *(ptr as *const u32) as u64,
-            64 => *(ptr as *const u64),
+            1 => *(ptr as *const u8) as u64,
+            2 => *(ptr as *const u16) as u64,
+            4 => *(ptr as *const u32) as u64,
+            8 => *(ptr as *const u64),
             _ => 0,
         })
     }
@@ -221,10 +248,10 @@ impl Dereference for u64 {
     unsafe fn set_at(&self, offset: i16, size: usize, value: &Self) -> bool {
         let ptr = unchecked_add(*self, offset);
         match size {
-            8 => *(ptr as *mut u8) = *value as u8,
-            16 => *(ptr as *mut u16) = *value as u16,
-            32 => *(ptr as *mut u32) = *value as u32,
-            64 => *(ptr as *mut u64) = *value,
+            1 => *(ptr as *mut u8) = *value as u8,
+            2 => *(ptr as *mut u16) = *value as u16,
+            4 => *(ptr as *mut u32) = *value as u32,
+            8 => *(ptr as *mut u64) = *value,
             _ => return false,
         }
         true

@@ -1,3 +1,5 @@
+//! See [StackRegion].
+
 use core::cell::RefCell;
 
 use alloc::{rc::Rc, vec::Vec};
@@ -64,6 +66,7 @@ pub struct StackRegion {
 }
 
 impl StackRegion {
+    /// Creates an empty stack region
     pub fn new() -> StackRegion {
         StackRegion {
             id: 0,

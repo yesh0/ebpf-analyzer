@@ -1,3 +1,6 @@
+//! This file contains the [Vm] trait used by the interpreter
+//! as well as a VM implemtation [UncheckedVm] working as an interpreter.
+
 use core::{cell::UnsafeCell, num::Wrapping};
 
 use alloc::vec::Vec;

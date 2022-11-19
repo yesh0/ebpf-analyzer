@@ -1,3 +1,5 @@
+//! This module contains some of the unsafe operations.
+
 /// Safely borrows multiple mutable items from a mutable slice
 /// 
 /// Internally it uses unsafe code after validating the bounds and checking for duplicate indices.
