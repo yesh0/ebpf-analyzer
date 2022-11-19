@@ -38,3 +38,30 @@ Then the verifier ensures that:
   - (as well as not violating several function specific checks);
 - caller saved registers are marked as invalid;
 - `R0` is set to something matching the return value of the helper.
+
+## `bpf_func_proto`
+
+Here is a few examples:
+
+- [`bpf_get_current_task`](https://github.com/torvalds/linux/blob/4dc12f37a8e98e1dca5521c14625c869537b50b6/kernel/trace/bpf_trace.c#L762):
+
+  ```c
+  const struct bpf_func_proto bpf_get_current_task_proto = {
+      .func         = bpf_get_current_task,
+      .gpl_only     = true,
+      .ret_type     = RET_INTEGER,
+  };
+  ```
+
+- [`bpf_probe_read_user_str`](https://github.com/torvalds/linux/blob/4dc12f37a8e98e1dca5521c14625c869537b50b6/kernel/trace/bpf_trace.c#L216):
+
+  ```c
+  const struct bpf_func_proto bpf_probe_read_user_str_proto = {
+      .func         = bpf_probe_read_user_str,
+      .gpl_only     = true,
+      .ret_type     = RET_INTEGER,
+      .arg1_type    = ARG_PTR_TO_UNINIT_MEM,
+      .arg2_type    = ARG_CONST_SIZE_OR_ZERO,
+      .arg3_type    = ARG_ANYTHING,
+  };
+  ```

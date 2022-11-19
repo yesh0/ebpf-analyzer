@@ -41,3 +41,40 @@ Some straightforward checks:
 - Disallowing pointer comparison unless `allow_ptr_leaks` is on.
 
 (WIP)
+
+## Register state propagation
+
+Sometimes you have too many variables in your program and the compiler has to spill them onto the stack.
+(Or if you are using `clang -O0`, then all variables are allocated on the stack by default.)
+
+Now consider the following scenario (in pseudo eBPF assembly):
+
+```
+call func1             # return values is stored in r0
+*(u64*)(r10 - 8) = r0  # spilling r0 onto stack
+...                    # doing other stuff
+r1 = *(u64*)(r10 - 8)  # getting the value back
+if r1 > 1000 goto +20  # conditional jump
+```
+
+We know that `r1 = *(u64*)(r10 - 8)`.
+So if `r1 > 1000`, we believe `*(u64*)(r10 - 8) > 100` holds as well.
+The eBPF verifier puts some effort into passing these information around by doing the following:
+
+1. Assign each value a unique id;
+   - The id is generated from `++env->id_gen`.
+     Since the verifier limits the number of total instructions in a verification branch,
+     we should be safe from overflowing the `u32` field.
+2. Pass the id on when copying values;
+3. Clear the id field each time the value gets changed.
+
+Read the source code for more information:
+- [`bpf_verifier.h#bpf_for_each_spilled_reg`](https://github.com/torvalds/linux/blob/4dc12f37a8e98e1dca5521c14625c869537b50b6/include/linux/bpf_verifier.h#L347):
+  The verifier walks through the whole allocated stack for spilled registers.
+- [`bpf_verifier.h#bpf_for_each_reg_in_vstate`](https://github.com/torvalds/linux/blob/4dc12f37a8e98e1dca5521c14625c869537b50b6/include/linux/bpf_verifier.h#L353):
+  A macro to iterate through all register values (including spilled ones).
+- [`struct bpf_verifier_env`](https://github.com/torvalds/linux/blob/4dc12f37a8e98e1dca5521c14625c869537b50b6/include/linux/bpf_verifier.h#L507):
+  The `id_gen` field is used to generate unique ids for values and pointers.
+  (You can search for `++env->id_gen` in `verifier.c` for its usages.
+- [`verifier.c#find_equal_scalars`](https://github.com/torvalds/linux/blob/4dc12f37a8e98e1dca5521c14625c869537b50b6/kernel/bpf/verifier.c#L10105-L10115):
+  Propagates a value to registers of the same id.
