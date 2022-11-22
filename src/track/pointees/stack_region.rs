@@ -239,13 +239,9 @@ impl MemoryRegion for StackRegion {
                         }
                     } else {
                         let start_i = Self::o2i(start);
-                        let end_i = if end % 8 == 0 {
-                            Self::o2i(end) - 1
-                        } else {
-                            Self::o2i(end)
-                        };
+                        let end_i = Self::o2i(end - 1);
                         self.reserve(end_i);
-                        for i in start_i..=end_i {
+                        for i in end_i..=start_i {
                             self.values[i] =
                                 StackSlot::Value64(TrackedValue::Scalar(Scalar::unknown()));
                         }
@@ -291,6 +287,17 @@ use super::{
 
 #[cfg(test)]
 use rand::{thread_rng, Rng};
+
+#[test]
+fn test_offset() {
+    let mut offset = 512usize;
+    for i in 0..64 {
+        for _ in 0..8 {
+            offset -= 1;
+            assert!(StackRegion::o2i(offset) == i);
+        }
+    }
+}
 
 #[test]
 pub fn test_clone() {

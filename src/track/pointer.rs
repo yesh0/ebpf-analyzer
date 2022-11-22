@@ -6,6 +6,7 @@ use core::{
 };
 
 use bitflags::bitflags;
+use num_traits::ToPrimitive;
 
 use super::{pointees::Pointee, scalar::Scalar, TrackError, TrackedValue};
 
@@ -72,9 +73,9 @@ impl Pointer {
     }
 
     /// Tries to read from the pointed memory
-    /// 
+    ///
     /// - `size`: in bytes
-    pub fn get(&mut self, size: u8) -> Result<TrackedValue, TrackError> {
+    pub fn get(&self, size: u8) -> Result<TrackedValue, TrackError> {
         if self.non_null() {
             if self.is_readable() {
                 self.pointee.borrow_mut().get(&self.offset, size)
@@ -87,12 +88,31 @@ impl Pointer {
     }
 
     /// Tries to write to the pointed memory
-    /// 
+    ///
     /// - `size`: in bytes
-    pub fn set(&mut self, size: u8, value: &TrackedValue) -> Result<(), TrackError> {
+    pub fn set(&self, size: u8, value: &TrackedValue) -> Result<(), TrackError> {
         if self.non_null() {
             if self.is_mutable() {
                 self.pointee.borrow_mut().set(&self.offset, size, value)
+            } else {
+                Err(TrackError::PointeeNotWritable)
+            }
+        } else {
+            Err(TrackError::PointerNullable)
+        }
+    }
+
+    /// Tries to write to the pointed memory
+    ///
+    /// - `len`: in bytes
+    pub fn set_all(&self, len: usize) -> Result<(), TrackError> {
+        if self.non_null() {
+            if self.is_mutable() {
+                if let Some(Some(offset)) = self.offset.value64().map(|i| i.to_usize()) {
+                    self.pointee.borrow_mut().set_all(offset, len)
+                } else {
+                    Err(TrackError::PointerOffsetMalformed)
+                }
             } else {
                 Err(TrackError::PointeeNotWritable)
             }

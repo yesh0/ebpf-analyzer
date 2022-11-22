@@ -38,10 +38,12 @@
 //! - [linux/include/uapi/linux/bpf.h](https://github.com/torvalds/linux/blob/4dc12f37a8e98e1dca5521c14625c869537b50b6/include/uapi/linux/bpf.h#L1156-L1199)
 
 #![no_std]
+#![forbid(missing_docs)]
 
+/// Code point type (`u64`)
 pub type CodeUnit = u64;
 
-/// Stack for the eBPF stack, in slots.
+/// Stack for the eBPF stack, in bytes.
 pub const STACK_SIZE: usize = 512;
 
 /// Writable register count, that is, R0, ..., R9
@@ -232,6 +234,7 @@ pub const BPF_ATOMIC_XCHG     : i32 = 0xe0 | BPF_ATOMIC_FETCH;
 /// BPF STX ATMOIC immediate code: atomic compare and swap
 pub const BPF_ATOMIC_CMPXCHG  : i32 = 0xf0 | BPF_ATOMIC_FETCH;
 
+/// A module containing bit masks
 pub mod mask {
     use crate::*;
 
@@ -250,10 +253,12 @@ pub mod mask {
     /// JMP / ALU source mask
     pub const BPF_OPCODE_SRC_MASK       : u8 = 0b00001000;
 
+    /// Returns `true` if the opcode matches [BPF_ST], [BPF_STX], [BPF_LD] or [BPF_LDX]
     pub fn is_store_or_load(opcode: u8) -> bool {
         (opcode & 0b00000100) == 0
     }
 
+    /// Returns `true` if the opcode matches [BPF_JMP] or [BPF_JMP32]
     pub fn is_jump(opcode: u8) -> bool {
         let class = opcode & BPF_OPCODE_CLASS_MASK;
         class == BPF_JMP || class == BPF_JMP32

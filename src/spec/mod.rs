@@ -1,5 +1,7 @@
 //! This module contains the instruction verification according to the instruction set specification.
 
+pub mod proto;
+
 use core::fmt::Debug;
 
 use ebpf_consts::*;
@@ -29,9 +31,9 @@ pub struct WideInstruction {
     /// The first 64-bit value
     pub instruction: Instruction,
     /// The following 64-bit value
-    /// 
+    ///
     /// No, this is not `imm64`.
-    pub imm: i64,
+    pub imm: u64,
 }
 
 /// Parsed instruction result
@@ -101,7 +103,7 @@ impl WideInstruction {
 
     /// `insn0.imm | (insn1.imm << 32)`
     pub fn imm64(&self) -> u64 {
-        (self.imm0() as u32 as u64) | ((self.imm as u64 >> 32) << 32)
+        (self.imm0() as u32 as u64) | ((self.imm >> 32) << 32)
     }
 
     /// Unused part in the second 64 bits
@@ -163,7 +165,7 @@ impl Instruction {
             } else {
                 ParsedInstruction::WideInstruction(WideInstruction {
                     instruction: insn,
-                    imm: code[pc + 1] as i64,
+                    imm: code[pc + 1],
                 })
             }
         } else {
@@ -187,7 +189,7 @@ impl Instruction {
     /// 1. Legacy instructions (BPF Packet access instructions) are disallowed;
     /// 2. Unused fields must be zeroed;
     /// 3. R10 is read-only while the other ten are writable;
-    /// 
+    ///
     /// Note that for wide instructions, ideally, the next instruction
     /// will have its low 32 bits zeroed. But we are not checking that here.
     /// Use [WideInstruction] to check that.
@@ -222,7 +224,7 @@ impl Instruction {
     }
 
     /// Returns `Some(destination)` for jump instructions (other than BPF_CALL)
-    /// 
+    ///
     /// See [JumpInstruction].
     pub fn jumps_to(self) -> Option<JumpInstruction> {
         if is_jump(self.opcode) {

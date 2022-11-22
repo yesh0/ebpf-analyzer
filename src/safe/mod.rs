@@ -1,7 +1,7 @@
 //! This module contains some of the unsafe operations.
 
 /// Safely borrows multiple mutable items from a mutable slice
-/// 
+///
 /// Internally it uses unsafe code after validating the bounds and checking for duplicate indices.
 macro_rules! mut_borrow_items {
     ($self:expr, [$($index:expr),+], $t:ty) => {{
@@ -40,14 +40,14 @@ pub fn test_reborrowed() {
     let i = 1;
     let j = 2;
     let k = 3;
-    if let Some((a, b, c)) = mut_borrow_items!(list, [i, j, k], i32) {
+    let tuple = mut_borrow_items!(list, [i, j, k], i32);
+    assert!(tuple.is_some());
+    if let Some((a, b, c)) = tuple {
         *a = 11;
         *b = 12;
         *c = 13;
         assert!(list[1] == 11);
         assert!(list[2] == 12);
         assert!(list[3] == 13);
-    } else {
-        panic!();
     }
 }

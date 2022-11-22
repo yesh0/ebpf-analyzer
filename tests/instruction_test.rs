@@ -1,6 +1,7 @@
 use ebpf_analyzer::{
-    analyzer::{Analyzer, VerificationError},
-    spec::{Instruction, ParsedInstruction}, blocks::FunctionBlock,
+    analyzer::{Analyzer, AnalyzerConfig, VerificationError},
+    blocks::FunctionBlock,
+    spec::{Instruction, ParsedInstruction},
 };
 use llvm_util::parse_llvm_dump;
 
@@ -35,20 +36,24 @@ fn validate_valid_code() {
 fn validate_valid_blocks() {
     let code = parse_llvm_dump(SIMPLE1);
     match FunctionBlock::new(&code) {
-        Ok(blocks) => assert!(blocks[0].block_count() == 10, "Block count does not match"),
+        Ok(blocks) => assert!(
+            blocks[0].block_count() == 8,
+            "Block count does not match: {}",
+            blocks[0].block_count()
+        ),
         Err(err) => panic!("Err: {:?}", err),
     }
-    match Analyzer::analyze(&code) {
-        Ok(_) => {},
-        Err(err) => panic!("Err: {:?}", err),
+    match Analyzer::analyze(&code, &AnalyzerConfig { helpers: &[] }) {
+        Err(VerificationError::IllegalStateChange(_)) => {},
+        _ => panic!(),
     }
 }
 
 #[test]
 fn validate_unreachable_blocks() {
     let code = parse_llvm_dump(SIMPLE2);
-    match Analyzer::analyze(&code) {
-        Err(VerificationError::IllegalGraph) => {},
+    match Analyzer::analyze(&code, &AnalyzerConfig { helpers: &[] }) {
+        Err(VerificationError::IllegalGraph) => {}
         _ => panic!("Should contain unreachable blocks"),
     }
 }

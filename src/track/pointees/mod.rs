@@ -11,7 +11,7 @@ pub mod struct_region;
 pub mod empty_region;
 
 /// This trait is used in branching, when the VM state is copied into two
-/// 
+///
 /// See the VM state implementation for more details.
 /// TODO: Add links here.
 pub trait SafeClone {
@@ -28,13 +28,24 @@ pub trait SafeClone {
 /// A memory region that checks memory access
 pub trait MemoryRegion: SafeClone + Debug {
     /// Tries to read from the region
-    /// 
+    ///
     ///  - `size`: in bytes
     fn get(&mut self, offset: &Scalar, size: u8) -> Result<TrackedValue, TrackError>;
     /// Tries to write to the region
-    /// 
+    ///
     ///  - `size`: in bytes
     fn set(&mut self, offset: &Scalar, size: u8, value: &TrackedValue) -> Result<(), TrackError>;
+    /// Sets a range of bytes
+    fn set_all(&mut self, offset: usize, len: usize) -> Result<(), TrackError> {
+        if let Some(end) = offset.checked_add(len) {
+            for i in offset..end {
+                self.set(&Scalar::constant64(i as u64), 1, &Scalar::unknown().into())?;
+            }
+            Ok(())
+        } else {
+            Err(TrackError::PointerOutOfBound)
+        }
+    }
 }
 
 /// Reference to a memory region

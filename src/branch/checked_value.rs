@@ -2,17 +2,22 @@
 //! and is used with [super::vm::BranchState] in [crate::interpreter::run]
 //! to deduce possible values.
 
-use core::{cell::UnsafeCell, fmt::Debug, ops::*};
+use core::{
+    cell::UnsafeCell,
+    fmt::Debug,
+    ops::*,
+};
 
 use ebpf_atomic::{Atomic, AtomicError};
 
 use crate::{
     interpreter::value::*,
-    track::{scalar::Scalar, TrackedValue},
+    spec::proto::{ArgumentType, IllegalFunctionCall},
+    track::{scalar::Scalar, TrackedValue, pointer::Pointer},
 };
 
 /// A value wrapping up [TrackedValue] while also tracking its validity
-/// 
+///
 /// While [TrackedValue] only implements algorithm to track individual values,
 /// [CheckedValue] stores extra info for validity checking and branch evaluation.
 #[derive(Default)]
@@ -34,12 +39,76 @@ impl CheckedValue {
         }
     }
 
-    pub(super) fn inner(&self) -> Option<&TrackedValue> {
+    /// Returns the inner [TrackedValue]
+    pub fn inner(&self) -> Option<&TrackedValue> {
         unsafe { &*(self.0.get()) }.as_ref()
     }
 
-    pub(super) fn inner_mut(&mut self) -> &mut Option<TrackedValue> {
+    /// Returns the inner [TrackedValue] as mutable
+    pub fn inner_mut(&mut self) -> &mut Option<TrackedValue> {
         self.0.get_mut()
+    }
+
+    pub(crate) fn check_arg_type(
+        &self,
+        wants: &ArgumentType,
+        extra: Option<&Self>,
+    ) -> Result<(), IllegalFunctionCall> {
+        match wants {
+            ArgumentType::Any => Ok(()),
+            ArgumentType::Some => {
+                if self.is_valid() {
+                    Ok(())
+                } else {
+                    Err(IllegalFunctionCall::UsedRegisterNotInitialized)
+                }
+            }
+            ArgumentType::Constant(range) => {
+                if let Some(TrackedValue::Scalar(s)) = self.inner() {
+                    if let Some(constant) = s.value64() {
+                        if range.contains(&constant) {
+                            Ok(())
+                        } else {
+                            Err(IllegalFunctionCall::OutofRange)
+                        }
+                    } else {
+                        Err(IllegalFunctionCall::NotAConstant)
+                    }
+                } else {
+                    Err(IllegalFunctionCall::TypeMismatch)
+                }
+            }
+            ArgumentType::Scalar => {
+                if let Some(TrackedValue::Scalar(_)) = self.inner() {
+                    Ok(())
+                } else {
+                    Err(IllegalFunctionCall::TypeMismatch)
+                }
+            }
+            ArgumentType::FixedMemory(size) => {
+                if let Some(TrackedValue::Pointer(p)) = self.inner() {
+                    p.set_all(*size)
+                        .map_err(IllegalFunctionCall::IllegalPointer)
+                } else {
+                    Err(IllegalFunctionCall::TypeMismatch)
+                }
+            }
+            ArgumentType::DynamicMemory(_) => {
+                if let Some(reg) = extra {
+                    if let Some(TrackedValue::Scalar(s)) = reg.inner() {
+                        if let Some(size) = s.value64() {
+                            self.check_arg_type(&ArgumentType::FixedMemory(size as usize), None)
+                        } else {
+                            Err(IllegalFunctionCall::NotAConstant)
+                        }
+                    } else {
+                        Err(IllegalFunctionCall::TypeMismatch)
+                    }
+                } else {
+                    Err(IllegalFunctionCall::TypeMismatch)
+                }
+            },
+        }
     }
 }
 
@@ -52,6 +121,12 @@ impl From<Scalar> for CheckedValue {
 impl From<TrackedValue> for CheckedValue {
     fn from(v: TrackedValue) -> Self {
         CheckedValue(UnsafeCell::new(Some(v)))
+    }
+}
+
+impl From<Pointer> for CheckedValue {
+    fn from(v: Pointer) -> Self {
+        TrackedValue::Pointer(v).into()
     }
 }
 

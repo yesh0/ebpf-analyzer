@@ -1,5 +1,5 @@
 //! This modules contains an implementation of [Vm] dedicated to eBPF verification: [BranchState].
-//! 
+//!
 //! Since the VM branches when doing conditional jumps (see [super::fork]),
 //! usually the VM is kept behind an [Rc] with [Branch].
 
@@ -19,10 +19,15 @@ use crate::{
         pointer::{Pointer, PointerAttributes},
         scalar::Scalar,
         TrackedValue,
-    },
+    }, spec::proto::VerifiableCall,
 };
 
 use super::checked_value::CheckedValue;
+
+/// A collection of used helper functions
+///
+/// This assumes that the user uses a set of helpers determined at compile time.
+pub type StaticHelpers = &'static [&'static dyn VerifiableCall<CheckedValue, BranchState>];
 
 /// Inner state of [BranchState]
 struct InnerState {
@@ -31,10 +36,11 @@ struct InnerState {
     registers: [CheckedValue; 11],
     stack: Pointee,
     regions: Vec<Pointee>,
+    helpers: StaticHelpers,
 }
 
 /// The state of the verifying machine at a certain point
-/// 
+///
 /// It contains, for now, the following information:
 /// - the program counter
 /// - validity of the current execution path
@@ -50,13 +56,14 @@ impl BranchState {
     ///
     /// Usually one should only use this at the start of verification.
     /// When branching, use [Clone] to duplicate the state.
-    pub fn new(regions: Vec<Pointee>) -> Self {
+    pub fn new(regions: Vec<Pointee>, helpers: StaticHelpers) -> Self {
         let mut state = InnerState {
             pc: 0,
             invalid: None,
             registers: Default::default(),
             stack: Rc::new(RefCell::new(StackRegion::new())),
             regions,
+            helpers,
         };
         let mut frame = Pointer::new(
             PointerAttributes::NON_NULL
@@ -108,6 +115,7 @@ impl Clone for BranchState {
             registers: Default::default(),
             stack: self.inner().stack.borrow().safe_clone(),
             regions,
+            helpers: self.inner().helpers,
         }));
         let redirector = |i| another.get_region(i);
         another.inner().stack.borrow_mut().redirects(&redirector);
@@ -190,8 +198,16 @@ impl Vm<CheckedValue> for BranchState {
         (self as *mut Self).as_mut().unwrap()
     }
 
-    fn call_helper(&mut self, _helper: i32) {
-        todo!()
+    fn call_helper(&mut self, helper: i32) {
+        if helper <= 0 {
+            self.invalidate("Invalid helper id");
+        } else if let Some(helper) = self.inner().helpers.get(helper as usize) {
+            if let Ok(v) = helper.call(self) {
+                *self.reg(0) = v;
+            } else {
+                self.invalidate("Function call failed");
+            }
+        }
     }
 }
 
@@ -208,7 +224,7 @@ impl Debug for BranchState {
 #[cfg(test)]
 fn test_clone_or_not(clone: bool) {
     use crate::interpreter::value::Dereference;
-    let mut vm = BranchState::new(Vec::new());
+    let mut vm = BranchState::new(Vec::new(), &[]);
     let offset = &Scalar::constant64(512 - 4);
     assert!(vm
         .inner()

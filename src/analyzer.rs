@@ -2,12 +2,23 @@
 
 use core::cell::RefCell;
 
-use alloc::{vec::Vec, rc::Rc};
+use alloc::{rc::Rc, vec::Vec};
 
 use crate::{
     blocks::{FunctionBlock, FunctionBlocks, IllegalStructure, TERMINAL_PSEUDO_BLOCK},
-    spec::IllegalInstruction, branch::{context::BranchContext, vm::{BranchState, Branch}}, interpreter::{context::VmContext, run, vm::Vm},
+    branch::{
+        context::BranchContext,
+        vm::{Branch, BranchState, StaticHelpers},
+    },
+    interpreter::{context::VmContext, run, vm::Vm},
+    spec::IllegalInstruction,
 };
+
+/// Configuration: how the analyzer checks the code
+pub struct AnalyzerConfig {
+    /// Helper function calls used by the function
+    pub helpers: StaticHelpers,
+}
 
 /// The analyzer (or eBPF verifier)
 pub struct Analyzer;
@@ -33,10 +44,10 @@ impl From<IllegalInstruction> for VerificationError {
 
 impl Analyzer {
     /// Analyze an eBPF program
-    pub fn analyze(code: &[u64]) -> Result<usize, VerificationError> {
+    pub fn analyze(code: &[u64], config: &AnalyzerConfig) -> Result<usize, VerificationError> {
         let blocks = FunctionBlock::new(code)?;
         Analyzer::has_unreachable_block(&blocks)?;
-        Analyzer::has_forbidden_state_change(code, &blocks)?;
+        Analyzer::has_forbidden_state_change(code, &blocks, config)?;
         Ok(0)
     }
 
@@ -74,12 +85,16 @@ impl Analyzer {
     fn has_forbidden_state_change(
         code: &[u64],
         blocks: &FunctionBlocks,
+        config: &AnalyzerConfig,
     ) -> Result<(), VerificationError> {
         if blocks.len() != 1 {
             Err(VerificationError::IllegalStructure(IllegalStructure::Empty))
         } else {
             let mut branches = BranchContext::new();
-            branches.add_pending_branch(Rc::new(RefCell::new(BranchState::new(Vec::new()))));
+            branches.add_pending_branch(Rc::new(RefCell::new(BranchState::new(
+                Vec::new(),
+                config.helpers,
+            ))));
             while let Some(branch) = branches.next() {
                 let mut vm = branch.borrow_mut();
                 run(code, &mut vm, &mut branches);
