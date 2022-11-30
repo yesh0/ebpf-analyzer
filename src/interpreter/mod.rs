@@ -254,7 +254,11 @@ pub fn run<Value: VmValue, M: Vm<Value>, C: VmContext<Value, M>>(
             }
             // BPF_EXIT: Exits
             [[BPF_JMP: JMP], [BPF_EXIT: EXIT]] => {
-                return;
+                if vm.return_relative() {
+                    pc = *vm.pc();
+                } else {
+                    return;
+                }
             }
             [[BPF_JMP: JMP], [BPF_CALL: CALL]] => {
                 *vm.pc() = pc;
@@ -302,6 +306,7 @@ pub fn run<Value: VmValue, M: Vm<Value>, C: VmContext<Value, M>>(
                 ##
             }
             [[BPF_LD: LD], [BPF_IMM: IMM], [BPF_DW: DW]] => {
+                // TODO: Support relocation
                 let value = insn.imm as u32 as u64 | (code[pc] & 0xFFFF_FFFF_0000_0000);
                 *vm.reg(insn.dst_reg()) = Value::constant64(value);
                 vm.update_reg(insn.dst_reg());

@@ -13,6 +13,7 @@ int main() {
     use_resource(resources[i - 1]);
     del_resource(resources[i - 1]);
   }
+  use_resource(resources[0]);
   // resources[0] is not deallocated
   return 0;
 }

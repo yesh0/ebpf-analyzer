@@ -31,8 +31,7 @@ pub enum InnerRegion<'a> {
 
 /// This trait is used in branching, when the VM state is copied into two
 ///
-/// See the VM state implementation for more details.
-/// TODO: Add links here.
+/// See the VM state implementation [crate::branch::vm::BranchState] for more details.
 pub trait SafeClone {
     /// Gets the unique id for this region
     fn get_id(&self) -> Id;
