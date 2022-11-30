@@ -53,6 +53,22 @@ Here is a few examples:
   };
   ```
 
+  And here is a typical usage:
+
+  ```c
+  // From https://nakryiko.com/posts/bpf-core-reference-guide/#bpf-core-read
+  struct task_struct *task = (void *)bpf_get_current_task();
+  struct task_struct *parent_task;
+  int err;
+
+  err = bpf_core_read(&parent_task, sizeof(void *), &task->parent);
+  if (err) {
+    /* handle error */
+  }
+
+  /* parent_task contains the value of task->parent pointer */
+  ```
+
 - [`bpf_probe_read_user_str`](https://github.com/torvalds/linux/blob/4dc12f37a8e98e1dca5521c14625c869537b50b6/kernel/trace/bpf_trace.c#L216):
 
   ```c
