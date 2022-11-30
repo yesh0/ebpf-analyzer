@@ -72,7 +72,12 @@ pub fn run<Value: VmValue, M: Vm<Value>, C: VmContext<Value, M>>(
                 let dst_r = insn.dst_reg();
                 // Gettings the src operant
                 #?((K))
-                    let src = &mut Value::constantu32(insn.imm as u32);
+                    #?((ALU32))
+                        let src = &mut Value::constantu32(insn.imm as u32);
+                    ##
+                    #?((ALU64))
+                        let src = &mut Value::constanti32(insn.imm);
+                    ##
                     let dst = vm.reg(dst_r);
                 ##
                 #?((X))
