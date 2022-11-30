@@ -18,6 +18,10 @@ use crate::{
 pub struct AnalyzerConfig {
     /// Helper function calls used by the function
     pub helpers: StaticHelpers,
+    /// How a VM should be setup
+    ///
+    /// Users may inject parameters here.
+    pub setup: fn(&mut BranchState),
 }
 
 /// The analyzer (or eBPF verifier)
@@ -91,10 +95,9 @@ impl Analyzer {
             Err(VerificationError::IllegalStructure(IllegalStructure::Empty))
         } else {
             let mut branches = BranchContext::new();
-            branches.add_pending_branch(Rc::new(RefCell::new(BranchState::new(
-                Vec::new(),
-                config.helpers,
-            ))));
+            let mut branch = BranchState::new(Vec::new(), config.helpers);
+            (config.setup)(&mut branch);
+            branches.add_pending_branch(Rc::new(RefCell::new(branch)));
             while let Some(branch) = branches.next() {
                 let mut vm = branch.borrow_mut();
                 run(code, &mut vm, &mut branches);

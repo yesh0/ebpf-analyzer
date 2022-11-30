@@ -1,9 +1,16 @@
+use std::{cell::RefCell, rc::Rc};
+
 use ebpf_analyzer::{
     analyzer::{Analyzer, AnalyzerConfig, VerificationError},
     branch::{checked_value::CheckedValue, vm::BranchState},
     interpreter::vm::Vm,
     spec::proto::{ArgumentType, IllegalFunctionCall, StaticFunctionCall, VerifiableCall},
-    track::{scalar::Scalar, TrackedValue},
+    track::{
+        pointees::{dyn_region::DynamicRegion, struct_region::StructRegion},
+        pointer::{Pointer, PointerAttributes},
+        scalar::Scalar,
+        TrackedValue,
+    },
 };
 use llvm_util::parse_llvm_dump;
 
@@ -11,6 +18,7 @@ pub const LOOP_OK: &str = include_str!("bpf-src/loop-ok.txt");
 pub const LOOP_NOT_OK: &str = include_str!("bpf-src/loop-not-ok.txt");
 pub const LOOP_OK_BUT: &str = include_str!("bpf-src/large-loop.txt");
 pub const LOOP_BRANCH_OK: &str = include_str!("bpf-src/branching-loop.txt");
+pub const LOOP_DYN_OK: &str = include_str!("bpf-src/dynamic-range.txt");
 
 struct AssertFunc;
 
@@ -51,6 +59,29 @@ const HELPERS: AnalyzerConfig = AnalyzerConfig {
         // as-is
         &AsIsFunc {},
     ],
+    setup: |vm| {
+        let region = Rc::new(RefCell::new(DynamicRegion::default()));
+        vm.add_region(region.clone());
+        let pointer = Pointer::new(
+            PointerAttributes::NON_NULL
+                | PointerAttributes::ARITHMETIC
+                | PointerAttributes::READABLE,
+            region.clone(),
+        );
+        let end = Pointer::new(
+            PointerAttributes::NON_NULL | PointerAttributes::DATA_END,
+            region,
+        );
+        let context = Rc::new(RefCell::new(StructRegion::new(
+            vec![pointer, end],
+            &[
+                1, 1, 1, 1, 1, 1, 1, 1,
+                2, 2, 2, 2, 2, 2, 2, 2,
+            ],
+        )));
+        vm.add_region(context.clone());
+        *vm.reg(1) = Pointer::new(PointerAttributes::NON_NULL | PointerAttributes::READABLE, context).into();
+    },
 };
 
 #[test]
@@ -86,6 +117,15 @@ fn test_branching() {
 #[test]
 fn test_costly() {
     let code = parse_llvm_dump(LOOP_OK_BUT);
+    match Analyzer::analyze(&code, &HELPERS) {
+        Ok(_) => {}
+        Err(err) => panic!("Error captured: {:?}", err),
+    }
+}
+
+#[test]
+fn test_dyn_region() {
+    let code = parse_llvm_dump(LOOP_DYN_OK);
     match Analyzer::analyze(&code, &HELPERS) {
         Ok(_) => {}
         Err(err) => panic!("Error captured: {:?}", err),

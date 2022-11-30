@@ -13,10 +13,13 @@ use crate::{
 use super::{is_access_in_range, InnerRegion, MemoryRegion, Pointee, SafeClone};
 
 /// A region with a dynamic range
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct DynamicRegion {
     id: Id,
     limit: usize,
+    /// A user-defined upper-limit for the limit,
+    /// preventing some nasty limits like `u64::MAX`, causing an overflow
+    upper_limit: usize,
 }
 
 impl DynamicRegion {
@@ -26,6 +29,17 @@ impl DynamicRegion {
             Some(limit) => limit.to_usize().unwrap_or(0),
             None => 0,
         });
+        if self.limit > self.upper_limit {
+            self.limit = 0;
+        }
+    }
+
+    /// Sets an upper limit for the length of the region
+    ///
+    /// This prevents some malicious code generating nasty limits like `u64::MAX`,
+    /// causing an overflow and arbitrary memory access.
+    pub fn set_upper_limit(&mut self, upper_limit: usize) {
+        self.upper_limit = upper_limit;
     }
 }
 
@@ -66,9 +80,22 @@ impl MemoryRegion for DynamicRegion {
     }
 }
 
+impl Default for DynamicRegion {
+    fn default() -> Self {
+        Self {
+            id: Default::default(),
+            limit: Default::default(),
+            upper_limit: 64 * 1024,
+        }
+    }
+}
+
 #[test]
 fn test_dyn_region() {
-    use crate::track::{pointer::{PointerAttributes, Pointer}, pointees::empty_region::EmptyRegion};
+    use crate::track::{
+        pointees::empty_region::EmptyRegion,
+        pointer::{Pointer, PointerAttributes},
+    };
     let mut region = DynamicRegion::default();
     extern crate std;
     std::dbg!(&region);

@@ -64,6 +64,15 @@ impl Pointer {
     pub fn is_arithmetic(&self) -> bool {
         self.attributes.contains(PointerAttributes::ARITHMETIC)
     }
+    /// Returns `true` if this pointer represents the end of a region
+    pub fn is_end_pointer(&self) -> bool {
+        self.attributes.contains(PointerAttributes::DATA_END)
+    }
+
+    /// Gets the offset
+    pub fn offset(&self) -> &Scalar {
+        &self.offset
+    }
 
     /// Creates a new pointer
     pub fn new(attributes: PointerAttributes, pointee: Pointee) -> Pointer {
@@ -133,6 +142,11 @@ impl Pointer {
         self.pointee.borrow().get_id()
     }
 
+    /// Returns the region
+    pub fn get_pointing_region(&self) -> Pointee {
+        self.pointee.clone()
+    }
+
     /// Sets the pointer to point to another region
     pub fn redirect(&mut self, region: Pointee) {
         self.pointee = region;
@@ -171,10 +185,18 @@ impl Sub<&Self> for &Pointer {
 
 impl Debug for Pointer {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        if self.is_end_pointer() {
+            f.write_fmt(format_args!("Pointer{{off:end,"))?;
+        } else {
+            f.write_fmt(format_args!("Pointer{{off:{:?},", &self.offset))?;
+        }
         f.write_fmt(format_args!(
-            "Pointer{{off:{:?},ptr:0x{:x}}}",
-            &self.offset,
-            &(self.pointee.as_ptr() as *const () as usize)
+            "ptr:0x{:x}",
+            &if let Ok(region) = self.get_pointing_region().try_borrow() {
+                region.get_id() as usize
+            } else {
+                self.pointee.as_ptr() as *const () as usize
+            }
         ))
     }
 }

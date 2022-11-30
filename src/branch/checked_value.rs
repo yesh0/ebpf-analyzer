@@ -152,6 +152,25 @@ macro_rules! unwrap_scalars_or_return {
     };
 }
 
+macro_rules! impl_scalar_or_pointer_assign_op {
+    ($fn:ident) => {
+        fn $fn(&mut self, rhs: &'a Self) {
+            let inners = (self.inner_mut(), rhs.inner());
+            let (mut v1, mut v2) = unwrap_or_return!(self, inners);
+            match (&mut v1, &mut v2) {
+                (TrackedValue::Scalar(s1), TrackedValue::Scalar(s2)) => s1.$fn(s2),
+                (TrackedValue::Pointer(p1), TrackedValue::Scalar(s2)) => p1.$fn(s2),
+                (TrackedValue::Scalar(s1), TrackedValue::Pointer(p2)) => {
+                    let mut value = p2.clone();
+                    value.$fn(s1);
+                    *v1 = TrackedValue::Pointer(value);
+                },
+                _ => self.invalidate(),
+            }
+        }
+    };
+}
+
 macro_rules! impl_scalar_only_assign_op {
     ($fn:ident) => {
         fn $fn(&mut self, rhs: &'a Self) {
@@ -201,11 +220,11 @@ impl Castable for CheckedValue {
 }
 
 impl<'a> AddAssign<&'a Self> for CheckedValue {
-    impl_scalar_only_assign_op!(add_assign);
+    impl_scalar_or_pointer_assign_op!(add_assign);
 }
 impl<'a> SubAssign<&'a Self> for CheckedValue {
     // TODO: Support subtracting pointers of the same memory region
-    impl_scalar_only_assign_op!(sub_assign);
+    impl_scalar_or_pointer_assign_op!(sub_assign);
 }
 impl<'a> MulAssign<&'a Self> for CheckedValue {
     impl_scalar_only_assign_op!(mul_assign);

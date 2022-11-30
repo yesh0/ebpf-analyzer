@@ -14,15 +14,20 @@ use ebpf_consts::{READABLE_REGISTER_COUNT, WRITABLE_REGISTER_COUNT};
 use crate::{
     interpreter::{value::Verifiable, vm::Vm},
     safe::{mut_borrow_items, safe_ref_unsafe_cell},
+    spec::proto::VerifiableCall,
     track::{
         pointees::{stack_region::StackRegion, Pointee},
         pointer::{Pointer, PointerAttributes},
         scalar::Scalar,
         TrackedValue,
-    }, spec::proto::VerifiableCall,
+    },
 };
 
-use super::{checked_value::CheckedValue, id::{IdGen, Id}, resource::ResourceTracker};
+use super::{
+    checked_value::CheckedValue,
+    id::{Id, IdGen},
+    resource::ResourceTracker,
+};
 
 /// A collection of used helper functions
 ///
@@ -89,9 +94,32 @@ impl BranchState {
         if id == self.inner().stack.borrow_mut().get_id() {
             self.inner().stack.clone()
         } else {
-            let index = self.inner().regions.binary_search_by(|r| r.borrow_mut().get_id().cmp(&id));
+            let index = self
+                .inner()
+                .regions
+                .binary_search_by(|r| r.borrow_mut().get_id().cmp(&id));
             self.inner().regions[index.ok().unwrap()].clone()
         }
+    }
+
+    fn get_region_except(&self, id: Id, borrowed: Id) -> Pointee {
+        if id == self.inner().stack.borrow_mut().get_id() {
+            self.inner().stack.clone()
+        } else {
+            let index = self.inner().regions.binary_search_by(|r| {
+                r.try_borrow()
+                    .map(|r| r.get_id())
+                    .unwrap_or(borrowed)
+                    .cmp(&id)
+            });
+            self.inner().regions[index.ok().unwrap()].clone()
+        }
+    }
+
+    /// Adds the region and sets its id
+    pub fn add_region(&mut self, region: Pointee) {
+        region.borrow_mut().set_id(self.inner_mut().ids.next_id());
+        self.inner_mut().regions.push(region);
     }
 
     fn inner(&self) -> &InnerState {
@@ -129,10 +157,22 @@ impl Clone for BranchState {
             regions,
             helpers: self.inner().helpers,
         }));
-        let redirector = |i| another.get_region(i);
-        another.inner().stack.borrow_mut().redirects(&redirector);
+        another
+            .inner()
+            .stack
+            .borrow_mut()
+            .redirects(&|i| another.get_region(i));
         for region in &another.inner().regions {
-            region.borrow_mut().redirects(&redirector);
+            let mut borrow = region.borrow_mut();
+            let id = borrow.get_id();
+            let redirector = |i| {
+                if i == id {
+                    region.clone()
+                } else {
+                    another.get_region_except(i, id)
+                }
+            };
+            borrow.redirects(&redirector);
         }
         for (i, register) in self.inner().registers.iter().enumerate() {
             let mut v = register.clone();
@@ -237,6 +277,9 @@ impl Vm<CheckedValue> for BranchState {
 impl Debug for BranchState {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.write_fmt(format_args!("BranchState {{\n"))?;
+        if let Some(message) = self.inner().invalid {
+            f.write_fmt(format_args!("  msg:   {}\n", message))?;
+        }
         f.write_fmt(format_args!("  pc:    {}\n", self.inner().pc))?;
         f.write_fmt(format_args!("  regs:  {:?}\n", self.inner().registers))?;
         f.write_fmt(format_args!("  stack: {:?}\n", self.inner().stack))?;

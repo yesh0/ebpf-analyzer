@@ -5,14 +5,15 @@ use core::cell::RefCell;
 use alloc::rc::Rc;
 
 use crate::{
-    track::{
-        comparable::{Comparable, ComparisonResult},
-        scalar,
-        TrackedValue::{self, *},
-    },
     interpreter::{
         context::{Fork, Forker},
         vm::Vm,
+    },
+    track::{
+        comparable::{Comparable, ComparisonResult},
+        pointees::InnerRegion,
+        scalar,
+        TrackedValue::{self, *},
     },
 };
 
@@ -35,6 +36,51 @@ impl BranchState {
             None
         }
     }
+
+    /// Sets the limit for a [crate::track::pointees::dyn_region::DynamicRegion].
+    fn fork_pointer_le(
+        &mut self,
+        dst: &mut TrackedValue,
+        src: &mut TrackedValue,
+        fork: &Fork,
+    ) -> Result<Option<Branch>, ()> {
+        if let (Pointer(p1), Pointer(p2)) = (dst, src) {
+            if p2.is_end_pointer()
+                && !p1.is_end_pointer()
+                && p1.non_null()
+                && p1.is_pointing_to(p2.get_pointing_to())
+            {
+                let pointee_ref = p1.get_pointing_region();
+                let mut pointee = pointee_ref.borrow_mut();
+                if let InnerRegion::Dyn(_) = pointee.inner() {
+                    // dropping to allow cloning
+                    drop(pointee);
+                    // fallthrough
+                    let mut branch = self.clone();
+                    *branch.pc() = fork.fall_through;
+                    // jumps
+                    let offset = p1.offset();
+                    // borrowing again
+                    let mut pointee = pointee_ref.borrow_mut();
+                    if let InnerRegion::Dyn(region) = pointee.inner() {
+                        region.set_limit(offset);
+                    } else {
+                        unreachable!();
+                    }
+                    *self.pc() = fork.target;
+                    Ok(Some(Rc::new(RefCell::new(branch))))
+                } else {
+                    self.invalidate("Only comparison of pointers of dynamic regions is allowed");
+                    Err(())
+                }
+            } else {
+                self.invalidate("Only comparison against an end pointer is allowed");
+                Err(())
+            }
+        } else {
+            Err(())
+        }
+    }
 }
 
 macro_rules! unwrap_checked_values {
@@ -49,7 +95,7 @@ macro_rules! unwrap_checked_values {
 }
 
 macro_rules! match_scalar_comparison {
-    ($op:ident, $self:ident, 
+    ($op:ident, $self:ident,
                 ($dst_i:ident, $s1:ident), ($src_i:ident, $s2:ident),
                 $fork:ident, $width:ident) => {
         match $s1.$op($s2, $width) {
@@ -71,6 +117,17 @@ macro_rules! match_scalar_comparison {
                     *branch.reg($src_i as u8) = branched2.into();
                 }
                 Some(Rc::new(RefCell::new(branch)))
+            }
+        }
+    };
+}
+
+/// Returns `Ok` if it is a valid pointer comparison
+macro_rules! match_pointer_le {
+    ($self:ident, $width:ident, $lhs:expr, $rhs:expr, $fork:ident) => {
+        if $width == 64u8 {
+            if let Ok(ret) = $self.fork_pointer_le($lhs, $rhs, &$fork) {
+                return ret;
             }
         }
     };
@@ -151,6 +208,9 @@ impl Forker<CheckedValue, BranchState> for BranchState {
         width: u8,
     ) -> Option<Branch> {
         let pair = unwrap_checked_values!(self, dst, src);
+        // `start + s1 < end` implies `start + s1 <= end` already
+        // For simplicity we are not setting the limit to `s1 + 1` but `s1` instead.
+        match_pointer_le!(self, width, pair.0, pair.1, fork);
         let (s1, s2) = self.all_scalars(pair.0, pair.1)?;
         match_scalar_comparison!(lt, self, (dst_i, s1), (src_i, s2), fork, width)
     }
@@ -163,6 +223,7 @@ impl Forker<CheckedValue, BranchState> for BranchState {
         width: u8,
     ) -> Option<Branch> {
         let pair = unwrap_checked_values!(self, dst, src);
+        match_pointer_le!(self, width, pair.0, pair.1, fork);
         let (s1, s2) = self.all_scalars(pair.0, pair.1)?;
         match_scalar_comparison!(le, self, (dst_i, s1), (src_i, s2), fork, width)
     }
