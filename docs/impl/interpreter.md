@@ -7,6 +7,19 @@ To understand what exactly each instruction means and their undefined behaviors,
 given that no documentation ever states that (for now),
 we have to look into an actual, official implementation.
 
+The following table uses a lot macros:
+- `u64 *regs`: The array of the registers,
+- `#define DST regs[insn->dst_reg]`: the `dst_reg`,
+- `#define SRC regs[insn->src_reg]`: the `src_reg`,
+- `#define IMM insn->imm`: the immediate number (which is `i32` by the way).
+
+To save some space, when `SRC` and `IMM` follows the same pattern, I am going to skip the latter.
+
+::: info
+Just in case someone forgets about type conversions in C like me,
+`(u64_v) op (i32_v)` actually does `(u64_v) op (i32_v as i64 as u64)` in Rust.
+:::
+
 | Ops / Variant   | Code                                                     | Notes              |
 |-----------------|----------------------------------------------------------|--------------------|
 | Shifts (64-bit) | `DST = DST OP (SRC & 63)`                                |                    |
