@@ -36,3 +36,5 @@ jobs:
         uses: codecov/codecov-action@v3.1.1
         with:
           verbose: true
+          # not required for public repos, but good-to-have to escape GitHub rate limit
+          token: ${{ secrets.CODECOV_TOKEN }}
