@@ -4,7 +4,7 @@ use core::cell::RefCell;
 
 use alloc::rc::Rc;
 
-use crate::track::{scalar::Scalar, TrackedValue, TrackError};
+use crate::{track::{scalar::Scalar, TrackedValue, TrackError}, branch::id::Id};
 
 use super::{MemoryRegion, SafeClone, Pointee};
 
@@ -13,7 +13,7 @@ use super::{MemoryRegion, SafeClone, Pointee};
 /// Operations on this region are forbidden.
 /// One may use this struct to represent map pointers or resource descriptors.
 #[derive(Clone, Debug)]
-pub struct EmptyRegion(usize);
+pub struct EmptyRegion(Id);
 
 impl EmptyRegion {
     /// Creates an empty region instance
@@ -33,11 +33,11 @@ impl MemoryRegion for EmptyRegion {
 }
 
 impl SafeClone for EmptyRegion {
-    fn get_id(&self) -> usize {
+    fn get_id(&self) -> Id {
         self.0
     }
 
-    fn set_id(&mut self, id: usize) {
+    fn set_id(&mut self, id: Id) {
         self.0 = id
     }
 
@@ -45,7 +45,7 @@ impl SafeClone for EmptyRegion {
         Rc::new(RefCell::new(self.clone()))
     }
 
-    fn redirects(&mut self, _mapper: &dyn Fn(usize) -> Pointee) {
+    fn redirects(&mut self, _mapper: &dyn Fn(Id) -> Pointee) {
         // nothing to do
     }
 }

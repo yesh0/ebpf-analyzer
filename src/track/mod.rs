@@ -25,6 +25,12 @@ impl From<Scalar> for TrackedValue {
     }
 }
 
+impl From<Pointer> for TrackedValue {
+    fn from(value: Pointer) -> Self {
+        Self::Pointer(value)
+    }
+}
+
 /// Error during tracking
 #[derive(Debug)]
 pub enum TrackError {

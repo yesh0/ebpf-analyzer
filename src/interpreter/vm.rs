@@ -46,8 +46,14 @@ pub trait Vm<Value: VmValue>: Forker<Value, Self> {
     fn three_regs(&mut self, i: u8, j: u8, k: u8) -> Option<(&mut Value, &mut Value, &mut Value)>;
     /// Checks if a certain register is invalidated
     fn update_reg(&mut self, reg: u8);
-    /// Call a helper function
+    /// Calls a helper function
     fn call_helper(&mut self, helper: i32);
+    /// Calls a inner function
+    fn call_relative(&mut self, offset: i16);
+    /// Returns from a function
+    ///
+    /// It returns `false` if the stack frame is empty and the interpreter should now stop.
+    fn return_relative(&mut self) -> bool;
 }
 
 struct UncheckedInnerVm<Value: VmValue> {
@@ -129,6 +135,14 @@ impl Vm<Wrapping<u64>> for UncheckedVm<Wrapping<u64>> {
         } else {
             self.invalidate("Helper not found");
         }
+    }
+
+    fn call_relative(&mut self, _offset: i16) {
+        todo!()
+    }
+
+    fn return_relative(&mut self) -> bool {
+        todo!()
     }
 }
 

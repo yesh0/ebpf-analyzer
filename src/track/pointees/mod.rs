@@ -1,14 +1,29 @@
 //! This module contains implementations to keep track of memory structures.
 
-use core::{cell::RefCell, fmt::Debug};
+use core::{cell::RefCell, fmt::Debug, any::Any};
 
 use alloc::rc::Rc;
+
+use crate::branch::id::Id;
+
+use self::dyn_region::DynamicRegion;
 
 use super::{TrackError, scalar::Scalar, TrackedValue};
 
 pub mod stack_region;
 pub mod struct_region;
 pub mod empty_region;
+pub mod dyn_region;
+
+/// How we get a concrete reference from `dyn` references
+pub enum InnerRegion<'a> {
+    /// A dynamic range
+    Dyn(&'a mut DynamicRegion),
+    /// Anything, allowing for user-defined types
+    Any((Id, &'a mut dyn Any)),
+    /// Not supposed to be used as anything
+    None,
+}
 
 /// This trait is used in branching, when the VM state is copied into two
 ///
@@ -16,13 +31,13 @@ pub mod empty_region;
 /// TODO: Add links here.
 pub trait SafeClone {
     /// Gets the unique id for this region
-    fn get_id(&self) -> usize;
+    fn get_id(&self) -> Id;
     /// Sets a unique id, used by the VM to track regions
-    fn set_id(&mut self, id: usize);
+    fn set_id(&mut self, id: Id);
     /// Clones, without redirecting inner pointers if any
     fn safe_clone(&self) -> Pointee;
     /// Redirects all inner pointers
-    fn redirects(&mut self, mapper: &dyn Fn(usize) -> Pointee);
+    fn redirects(&mut self, mapper: &dyn Fn(Id) -> Pointee);
 }
 
 /// A memory region that checks memory access
@@ -45,6 +60,10 @@ pub trait MemoryRegion: SafeClone + Debug {
         } else {
             Err(TrackError::PointerOutOfBound)
         }
+    }
+    /// Returns a concrete reference to the type behind a `dyn` reference
+    fn inner(&mut self) -> InnerRegion {
+        InnerRegion::None
     }
 }
 

@@ -8,6 +8,8 @@ use core::{
 use bitflags::bitflags;
 use num_traits::ToPrimitive;
 
+use crate::branch::id::Id;
+
 use super::{pointees::Pointee, scalar::Scalar, TrackError, TrackedValue};
 
 bitflags! {
@@ -122,12 +124,12 @@ impl Pointer {
     }
 
     /// Checks whether this pointer points to a memory region of the same id
-    pub fn is_pointing_to(&self, region: usize) -> bool {
+    pub fn is_pointing_to(&self, region: Id) -> bool {
         self.get_pointing_to() == region
     }
 
     /// Gets the memory region id
-    pub fn get_pointing_to(&self) -> usize {
+    pub fn get_pointing_to(&self) -> Id {
         self.pointee.borrow().get_id()
     }
 

@@ -22,7 +22,7 @@ use crate::{
     }, spec::proto::VerifiableCall,
 };
 
-use super::checked_value::CheckedValue;
+use super::{checked_value::CheckedValue, id::{IdGen, Id}, resource::ResourceTracker};
 
 /// A collection of used helper functions
 ///
@@ -32,11 +32,13 @@ pub type StaticHelpers = &'static [&'static dyn VerifiableCall<CheckedValue, Bra
 /// Inner state of [BranchState]
 struct InnerState {
     pc: usize,
+    ids: IdGen,
     invalid: Option<&'static str>,
     registers: [CheckedValue; 11],
     stack: Pointee,
     regions: Vec<Pointee>,
     helpers: StaticHelpers,
+    resources: ResourceTracker,
 }
 
 /// The state of the verifying machine at a certain point
@@ -59,9 +61,11 @@ impl BranchState {
     pub fn new(regions: Vec<Pointee>, helpers: StaticHelpers) -> Self {
         let mut state = InnerState {
             pc: 0,
+            ids: IdGen::default(),
             invalid: None,
             registers: Default::default(),
             stack: Rc::new(RefCell::new(StackRegion::new())),
+            resources: ResourceTracker::default(),
             regions,
             helpers,
         };
@@ -74,18 +78,19 @@ impl BranchState {
         );
         frame += &Scalar::constant64(512);
         *state.registers[10].inner_mut() = Some(TrackedValue::Pointer(frame));
-        state.stack.borrow_mut().set_id(0);
-        for (id, region) in state.regions.iter().enumerate() {
-            region.borrow_mut().set_id(id + 1);
+        state.stack.borrow_mut().set_id(state.ids.next_id());
+        for region in &state.regions {
+            region.borrow_mut().set_id(state.ids.next_id());
         }
         Self(UnsafeCell::new(state))
     }
 
-    fn get_region(&self, id: usize) -> Pointee {
-        if id == 0 {
+    fn get_region(&self, id: Id) -> Pointee {
+        if id == self.inner().stack.borrow_mut().get_id() {
             self.inner().stack.clone()
         } else {
-            self.inner().regions[id - 1].clone()
+            let index = self.inner().regions.binary_search_by(|r| r.borrow_mut().get_id().cmp(&id));
+            self.inner().regions[index.ok().unwrap()].clone()
         }
     }
 
@@ -95,6 +100,11 @@ impl BranchState {
 
     fn inner_mut(&mut self) -> &mut InnerState {
         self.0.get_mut()
+    }
+
+    /// Retrieves the resource tracker
+    pub fn resources(&mut self) -> &mut ResourceTracker {
+        &mut self.inner_mut().resources
     }
 }
 
@@ -111,9 +121,11 @@ impl Clone for BranchState {
         }
         let mut another = Self(UnsafeCell::new(InnerState {
             pc: self.inner().pc,
+            ids: IdGen::default(),
             invalid: None,
             registers: Default::default(),
             stack: self.inner().stack.borrow().safe_clone(),
+            resources: self.inner().resources.clone(),
             regions,
             helpers: self.inner().helpers,
         }));
@@ -208,6 +220,17 @@ impl Vm<CheckedValue> for BranchState {
                 self.invalidate("Function call failed");
             }
         }
+    }
+
+    fn call_relative(&mut self, _offset: i16) {
+        todo!()
+    }
+
+    fn return_relative(&mut self) -> bool {
+        if !self.inner().resources.is_empty() {
+            self.invalidate("Resource not cleaned up");
+        }
+        false
     }
 }
 

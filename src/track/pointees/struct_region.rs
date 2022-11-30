@@ -4,7 +4,7 @@ use core::cell::RefCell;
 
 use alloc::{vec::Vec, rc::Rc};
 
-use crate::track::{pointer::Pointer, scalar::Scalar, TrackError, TrackedValue};
+use crate::{track::{pointer::Pointer, scalar::Scalar, TrackError, TrackedValue}, branch::id::Id};
 
 use super::{is_access_in_range, MemoryRegion, SafeClone, Pointee};
 
@@ -30,14 +30,14 @@ use super::{is_access_in_range, MemoryRegion, SafeClone, Pointee};
 /// and requires a `'static` slice representing its structure.
 #[derive(Clone, Debug)]
 pub struct StructRegion {
-    id: usize,
+    id: Id,
     pointers: Vec<Pointer>,
     map: &'static [i8],
 }
 
 impl StructRegion {
     /// Creates a new struct region from the pointers and the map
-    /// 
+    ///
     /// The caller should ensure that the number of pointers matches
     /// pointers used the the region map, or else it will just panic.
     pub fn new(pointers: Vec<Pointer>, region_map: &'static [i8]) -> StructRegion {
@@ -99,11 +99,11 @@ impl MemoryRegion for StructRegion {
 }
 
 impl SafeClone for StructRegion {
-    fn get_id(&self) -> usize {
+    fn get_id(&self) -> Id {
         self.id
     }
 
-    fn set_id(&mut self, id: usize) {
+    fn set_id(&mut self, id: Id) {
         self.id = id
     }
 
@@ -111,7 +111,7 @@ impl SafeClone for StructRegion {
         Rc::new(RefCell::new(self.clone()))
     }
 
-    fn redirects(&mut self, mapper: &dyn Fn(usize) -> Pointee) {
+    fn redirects(&mut self, mapper: &dyn Fn(Id) -> Pointee) {
         for p in &mut self.pointers {
             p.redirect(mapper(p.get_pointing_to()));
         }

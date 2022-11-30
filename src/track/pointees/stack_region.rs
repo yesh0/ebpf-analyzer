@@ -5,7 +5,7 @@ use core::cell::RefCell;
 use alloc::{rc::Rc, vec::Vec};
 use ebpf_consts::STACK_SIZE;
 
-use crate::track::{scalar::Scalar, TrackError, TrackedValue};
+use crate::{track::{scalar::Scalar, TrackError, TrackedValue}, branch::id::Id};
 
 use super::{is_access_in_range, MemoryRegion, SafeClone};
 
@@ -54,7 +54,7 @@ enum StackSlot {
 /// - `fp`: Frame pointer (`offset = 512`)
 #[derive(Clone, Debug)]
 pub struct StackRegion {
-    id: usize,
+    id: Id,
     /// The values
     ///
     /// The highest `u64` on the stack is the first value.
@@ -257,11 +257,11 @@ impl MemoryRegion for StackRegion {
 }
 
 impl SafeClone for StackRegion {
-    fn get_id(&self) -> usize {
+    fn get_id(&self) -> Id {
         self.id
     }
 
-    fn set_id(&mut self, id: usize) {
+    fn set_id(&mut self, id: Id) {
         self.id = id
     }
 
@@ -270,7 +270,7 @@ impl SafeClone for StackRegion {
         Rc::new(RefCell::new(c))
     }
 
-    fn redirects(&mut self, mapper: &dyn Fn(usize) -> super::Pointee) {
+    fn redirects(&mut self, mapper: &dyn Fn(Id) -> super::Pointee) {
         for ele in &mut self.values {
             if let StackSlot::Value64(TrackedValue::Pointer(p)) = ele {
                 p.redirect(mapper(p.get_pointing_to()));

@@ -1,10 +1,10 @@
 //! Implements a generic interpreter and a tiny VM.
-//! 
+//!
 //! The interpreter is designed to run eBPF intructions
 //! on a virtual [Vm], backed by a value implementation [VmValue],
 //! which can get transparently replaced from [u64] with
 //! a value type with verification purposes like [crate::branch::checked_value::CheckedValue].
-//! 
+//!
 //! It also heavily uses the [opcode_match] macro, which messes around the code pieces.
 
 pub mod context;
@@ -252,7 +252,8 @@ pub fn run<Value: VmValue, M: Vm<Value>, C: VmContext<Value, M>>(
                 return;
             }
             [[BPF_JMP: JMP], [BPF_CALL: CALL]] => {
-                run_call(insn, vm, code);
+                *vm.pc() = pc;
+                run_call(insn, vm);
             }
             // Store / load
             [[BPF_LDX: LDX, BPF_STX: STX, BPF_ST: ST], [BPF_MEM: MEM],
@@ -318,10 +319,11 @@ pub fn run<Value: VmValue, M: Vm<Value>, C: VmContext<Value, M>>(
     }
 }
 
-fn run_call<Value: VmValue, M: Vm<Value>>(insn: Instruction, vm: &mut RefMut<M>, _code: &[u64]) {
+fn run_call<Value: VmValue, M: Vm<Value>>(insn: Instruction, vm: &mut RefMut<M>) {
     match insn.src_reg() {
         BPF_CALL_HELPER => vm.call_helper(insn.imm),
-        BPF_CALL_KFUNC | BPF_CALL_PSEUDO => vm.invalidate("Unsupported BPF_CALL"),
+        BPF_CALL_PSEUDO => vm.call_relative(insn.off),
+        BPF_CALL_KFUNC => vm.invalidate("Unsupported BPF_CALL"),
         _ => vm.invalidate("Invalid BPF_CALL"),
     }
 }
