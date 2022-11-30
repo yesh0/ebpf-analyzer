@@ -5,7 +5,12 @@ use core::ops::RangeInclusive;
 use crate::{
     branch::{checked_value::CheckedValue, vm::BranchState},
     interpreter::{value::VmValue, vm::Vm},
-    track::{scalar::Scalar, TrackError},
+    track::{
+        pointees::{pointed, simple_resource::SimpleResource, AnyType},
+        pointer::{Pointer, PointerAttributes},
+        scalar::Scalar,
+        TrackError, TrackedValue,
+    },
 };
 
 /// Error codes for illegal functions
@@ -21,6 +26,8 @@ pub enum IllegalFunctionCall {
     OutofRange,
     /// Pointer access error
     IllegalPointer(TrackError),
+    /// Illegal resource (deallocated, for example)
+    IllegalResource,
 }
 
 /// Function prototype information
@@ -29,8 +36,17 @@ pub trait VerifiableCall<Value: VmValue, M: Vm<Value>> {
     fn call(&self, vm: &mut M) -> Result<Value, IllegalFunctionCall>;
 }
 
+/// Describes what the function do to a resource
+#[derive(Clone)]
+pub enum ResourceOperation {
+    /// Probably unimportant operation
+    Unknown,
+    /// Deallocates the region
+    Deallocates,
+}
+
 /// Hard-coded allowed argument types
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub enum ArgumentType {
     /// Any value, including uninit values
     #[default]
@@ -45,6 +61,20 @@ pub enum ArgumentType {
     FixedMemory(usize),
     /// Ranged memory, with its size specified by another register
     DynamicMemory(u8),
+    /// Resource pointer (not null, readable & writable)
+    ResourceType((AnyType, ResourceOperation)),
+}
+
+/// Describes what the function returns
+pub enum ReturnType {
+    /// Invalid value
+    None,
+    /// (Unknown) scalar value
+    Scalar,
+    /// Allocated resource
+    AllocatedResource(AnyType),
+    /// External resource
+    ExternalResource(AnyType),
 }
 
 /// Specifies the arguments
@@ -53,28 +83,77 @@ pub type Arguments = [ArgumentType; 5];
 /// Verifies the call basing on static information
 pub struct StaticFunctionCall {
     arguments: Arguments,
+    returns: ReturnType,
 }
 
 impl StaticFunctionCall {
     /// Creates a function prototype
-    pub const fn new(arguments: Arguments) -> StaticFunctionCall {
-        StaticFunctionCall { arguments }
+    pub const fn new(arguments: Arguments, returns: ReturnType) -> StaticFunctionCall {
+        StaticFunctionCall { arguments, returns }
     }
 }
 
 impl VerifiableCall<CheckedValue, BranchState> for StaticFunctionCall {
     fn call(&self, vm: &mut BranchState) -> Result<CheckedValue, IllegalFunctionCall> {
-        for i in 0..5u8 {
-            let arg = &self.arguments[i as usize];
-            if let ArgumentType::DynamicMemory(reg) = arg {
-                let (a, b) = vm.two_regs(i, *reg).unwrap();
-                a.check_arg_type(&self.arguments[i as usize], Some(b))?;
-            } else {
-                vm.ro_reg(i)
-                    .check_arg_type(&self.arguments[i as usize], None)?;
+        for i in 1..=5u8 {
+            let arg = self.arguments[(i - 1) as usize].clone();
+            match arg {
+                ArgumentType::FixedMemory(_) => {
+                    if vm.is_invalid_resource(i) {
+                        return Err(IllegalFunctionCall::IllegalResource);
+                    }
+                    vm.ro_reg(i).check_arg_type(&arg, None)?;
+                }
+                ArgumentType::DynamicMemory(reg) => {
+                    if vm.is_invalid_resource(i) {
+                        return Err(IllegalFunctionCall::IllegalResource);
+                    }
+                    let (a, b) = vm.two_regs(i, reg).unwrap();
+                    a.check_arg_type(&arg, Some(b))?;
+                }
+                ArgumentType::ResourceType((_, ref op)) => {
+                    if vm.is_invalid_resource(i) {
+                        return Err(IllegalFunctionCall::IllegalResource);
+                    }
+                    vm.ro_reg(i).check_arg_type(&arg, None)?;
+                    let reg = vm.ro_reg(i);
+                    if let ResourceOperation::Deallocates = op {
+                        if let Some(TrackedValue::Pointer(p)) = reg.inner() {
+                            vm.deallocate_resource(p.get_pointing_to());
+                        }
+                    }
+                }
+                _ => {
+                    vm.ro_reg(i).check_arg_type(&arg, None)?;
+                }
             }
         }
-        Ok(Scalar::unknown().into())
+        match self.returns {
+            ReturnType::None => Ok(CheckedValue::default()),
+            ReturnType::Scalar => Ok(Scalar::unknown().into()),
+            ReturnType::AllocatedResource(type_id) => {
+                let resource = pointed(SimpleResource::new(type_id));
+                vm.add_allocated_resource(resource.clone());
+                Ok(Pointer::new(
+                    PointerAttributes::NON_NULL
+                        | PointerAttributes::READABLE
+                        | PointerAttributes::MUTABLE,
+                    resource,
+                )
+                .into())
+            }
+            ReturnType::ExternalResource(type_id) => {
+                let resource = pointed(SimpleResource::new(type_id));
+                vm.add_external_resource(resource.clone());
+                Ok(Pointer::new(
+                    PointerAttributes::NON_NULL
+                        | PointerAttributes::READABLE
+                        | PointerAttributes::MUTABLE,
+                    resource,
+                )
+                .into())
+            }
+        }
     }
 }
 

@@ -95,7 +95,7 @@ impl Analyzer {
             Err(VerificationError::IllegalStructure(IllegalStructure::Empty))
         } else {
             let mut branches = BranchContext::new();
-            let mut branch = BranchState::new(Vec::new(), config.helpers);
+            let mut branch = BranchState::new(config.helpers);
             (config.setup)(&mut branch);
             branches.add_pending_branch(Rc::new(RefCell::new(branch)));
             while let Some(branch) = branches.next() {

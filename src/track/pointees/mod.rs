@@ -14,13 +14,17 @@ pub mod stack_region;
 pub mod struct_region;
 pub mod empty_region;
 pub mod dyn_region;
+pub mod simple_resource;
+
+/// Type id for user-defined types
+pub type AnyType = u32;
 
 /// How we get a concrete reference from `dyn` references
 pub enum InnerRegion<'a> {
     /// A dynamic range
     Dyn(&'a mut DynamicRegion),
     /// Anything, allowing for user-defined types
-    Any((Id, &'a mut dyn Any)),
+    Any((AnyType, &'a mut dyn Any)),
     /// Not supposed to be used as anything
     None,
 }
@@ -36,8 +40,8 @@ pub trait SafeClone {
     fn set_id(&mut self, id: Id);
     /// Clones, without redirecting inner pointers if any
     fn safe_clone(&self) -> Pointee;
-    /// Redirects all inner pointers
-    fn redirects(&mut self, mapper: &dyn Fn(Id) -> Pointee);
+    /// Redirects some inner pointers
+    fn redirects(&mut self, mapper: &dyn Fn(Id) -> Option<Pointee>);
 }
 
 /// A memory region that checks memory access
@@ -105,4 +109,9 @@ fn is_access_in_range(
     } else {
         Err(TrackError::PointerOffsetMalformed)
     }
+}
+
+/// Wraps something into [Pointee]
+pub fn pointed<T: MemoryRegion + 'static>(region: T) -> Pointee {
+    Rc::new(RefCell::new(region))
 }

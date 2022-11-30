@@ -4,7 +4,7 @@ use ebpf_analyzer::{
     analyzer::{Analyzer, AnalyzerConfig, VerificationError},
     branch::{checked_value::CheckedValue, vm::BranchState},
     interpreter::vm::Vm,
-    spec::proto::{ArgumentType, IllegalFunctionCall, StaticFunctionCall, VerifiableCall},
+    spec::proto::{ArgumentType, IllegalFunctionCall, StaticFunctionCall, VerifiableCall, ReturnType, ResourceOperation},
     track::{
         pointees::{dyn_region::DynamicRegion, struct_region::StructRegion},
         pointer::{Pointer, PointerAttributes},
@@ -18,7 +18,10 @@ pub const LOOP_OK: &str = include_str!("bpf-src/loop-ok.txt");
 pub const LOOP_NOT_OK: &str = include_str!("bpf-src/loop-not-ok.txt");
 pub const LOOP_OK_BUT: &str = include_str!("bpf-src/large-loop.txt");
 pub const LOOP_BRANCH_OK: &str = include_str!("bpf-src/branching-loop.txt");
-pub const LOOP_DYN_OK: &str = include_str!("bpf-src/dynamic-range.txt");
+pub const DYN_OK: &str = include_str!("bpf-src/dynamic-range.txt");
+pub const DYN_FAIL: &str = include_str!("bpf-src/dynamic-fail.txt");
+pub const RESOURCE_OK: &str = include_str!("bpf-src/resource-ok.txt");
+pub const RESOURCE_FAIL: &str = include_str!("bpf-src/resource-fail.txt");
 
 struct AssertFunc;
 
@@ -46,22 +49,46 @@ impl VerifiableCall<CheckedValue, BranchState> for AsIsFunc {
 
 const HELPERS: AnalyzerConfig = AnalyzerConfig {
     helpers: &[
-        // nop
+        // (0) nop
         &StaticFunctionCall::new([
             ArgumentType::Any,
             ArgumentType::Any,
             ArgumentType::Any,
             ArgumentType::Any,
             ArgumentType::Any,
-        ]),
-        // assertion
+        ], ReturnType::None),
+        // (1) assertion
         &AssertFunc {},
-        // as-is
+        // (2) as-is
         &AsIsFunc {},
+        // (3) allocates resource 1
+        &StaticFunctionCall::new([
+            ArgumentType::Scalar,
+            ArgumentType::Any,
+            ArgumentType::Any,
+            ArgumentType::Any,
+            ArgumentType::Any,
+        ], ReturnType::AllocatedResource(1)),
+        // (4) uses resource 1
+        &StaticFunctionCall::new([
+            ArgumentType::ResourceType((1, ResourceOperation::Unknown)),
+            ArgumentType::Any,
+            ArgumentType::Any,
+            ArgumentType::Any,
+            ArgumentType::Any,
+        ], ReturnType::None),
+        // (5) deallocates resource 1
+        &StaticFunctionCall::new([
+            ArgumentType::ResourceType((1, ResourceOperation::Deallocates)),
+            ArgumentType::Any,
+            ArgumentType::Any,
+            ArgumentType::Any,
+            ArgumentType::Any,
+        ], ReturnType::None),
     ],
     setup: |vm| {
         let region = Rc::new(RefCell::new(DynamicRegion::default()));
-        vm.add_region(region.clone());
+        vm.add_external_resource(region.clone());
         let pointer = Pointer::new(
             PointerAttributes::NON_NULL
                 | PointerAttributes::ARITHMETIC
@@ -79,7 +106,7 @@ const HELPERS: AnalyzerConfig = AnalyzerConfig {
                 2, 2, 2, 2, 2, 2, 2, 2,
             ],
         )));
-        vm.add_region(context.clone());
+        vm.add_external_resource(context.clone());
         *vm.reg(1) = Pointer::new(PointerAttributes::NON_NULL | PointerAttributes::READABLE, context).into();
     },
 };
@@ -125,9 +152,36 @@ fn test_costly() {
 
 #[test]
 fn test_dyn_region() {
-    let code = parse_llvm_dump(LOOP_DYN_OK);
+    let code = parse_llvm_dump(DYN_OK);
     match Analyzer::analyze(&code, &HELPERS) {
         Ok(_) => {}
         Err(err) => panic!("Error captured: {:?}", err),
+    }
+}
+
+#[test]
+fn test_dyn_region_fail() {
+    let code = parse_llvm_dump(DYN_FAIL);
+    match Analyzer::analyze(&code, &HELPERS) {
+        Ok(_) => panic!(),
+        Err(err) => std::println!("Error captured: {:?}", err),
+    }
+}
+
+#[test]
+fn test_resource_ok() {
+    let code = parse_llvm_dump(RESOURCE_OK);
+    match Analyzer::analyze(&code, &HELPERS) {
+        Ok(_) => {},
+        Err(err) => panic!("Error captured: {:?}", err),
+    }
+}
+
+#[test]
+fn test_resource_fail() {
+    let code = parse_llvm_dump(RESOURCE_FAIL);
+    match Analyzer::analyze(&code, &HELPERS) {
+        Ok(_) => panic!(),
+        Err(err) => std::println!("Error captured: {:?}", err),
     }
 }

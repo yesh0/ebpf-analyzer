@@ -2,11 +2,14 @@
 
 use core::cell::RefCell;
 
-use alloc::{vec::Vec, rc::Rc};
+use alloc::{rc::Rc, vec::Vec};
 
-use crate::{track::{pointer::Pointer, scalar::Scalar, TrackError, TrackedValue}, branch::id::Id};
+use crate::{
+    branch::id::Id,
+    track::{pointer::Pointer, scalar::Scalar, TrackError, TrackedValue},
+};
 
-use super::{is_access_in_range, MemoryRegion, SafeClone, Pointee};
+use super::{is_access_in_range, MemoryRegion, Pointee, SafeClone};
 
 /// A memory region of a struct instance
 ///
@@ -111,9 +114,11 @@ impl SafeClone for StructRegion {
         Rc::new(RefCell::new(self.clone()))
     }
 
-    fn redirects(&mut self, mapper: &dyn Fn(Id) -> Pointee) {
+    fn redirects(&mut self, mapper: &dyn Fn(Id) -> Option<Pointee>) {
         for p in &mut self.pointers {
-            p.redirect(mapper(p.get_pointing_to()));
+            if let Some(region) = mapper(p.get_pointing_to()) {
+                p.redirect(region);
+            }
         }
     }
 }

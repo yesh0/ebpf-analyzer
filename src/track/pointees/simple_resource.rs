@@ -1,28 +1,28 @@
-//! See [EmptyRegion].
+//! A simple resource pointee
 
 use core::cell::RefCell;
 
 use alloc::rc::Rc;
 
-use crate::{track::{scalar::Scalar, TrackedValue, TrackError}, branch::id::Id};
+use crate::{branch::id::Id, track::{scalar::Scalar, TrackedValue, TrackError}};
 
-use super::{MemoryRegion, SafeClone, Pointee};
+use super::{AnyType, MemoryRegion, SafeClone, Pointee, InnerRegion};
 
-/// Not a valid region
-///
-/// Operations on this region are forbidden.
-/// One may use this struct to represent map pointers or resource descriptors.
+/// A resource with a type
 #[derive(Clone, Debug)]
-pub struct EmptyRegion(Id);
+pub struct SimpleResource {
+    id: Id,
+    type_id: AnyType,
+}
 
-impl EmptyRegion {
-    /// Creates an empty region instance
-    pub fn instance() -> Pointee {
-        Rc::new(RefCell::new(EmptyRegion(0)))
+impl SimpleResource {
+    /// Creates an instance
+    pub fn new(type_id: AnyType) -> Self {
+        Self { id: 0, type_id }
     }
 }
 
-impl MemoryRegion for EmptyRegion {
+impl MemoryRegion for SimpleResource {
     fn get(&mut self, _offset: &Scalar, _size: u8) -> Result<TrackedValue, TrackError> {
         Err(crate::track::TrackError::PointeeNotReadable)
     }
@@ -30,15 +30,19 @@ impl MemoryRegion for EmptyRegion {
     fn set(&mut self, _offset: &Scalar, _size: u8, _value: &TrackedValue) -> Result<(), TrackError> {
         Err(crate::track::TrackError::PointeeNotWritable)
     }
+
+    fn inner(&mut self) -> InnerRegion {
+        InnerRegion::Any((self.type_id, self))
+    }
 }
 
-impl SafeClone for EmptyRegion {
+impl SafeClone for SimpleResource {
     fn get_id(&self) -> Id {
-        self.0
+        self.id
     }
 
     fn set_id(&mut self, id: Id) {
-        self.0 = id
+        self.id = id
     }
 
     fn safe_clone(&self) -> Pointee {

@@ -1,20 +1,31 @@
 //! Tracks VM resource usage
 
-use alloc::collections::VecDeque;
+use alloc::{collections::VecDeque, vec::Vec};
 
 use super::id::{Id, IdGen};
 
 /// Tracks the allocation of resources
 #[derive(Clone, Default)]
 pub struct ResourceTracker {
+    /// Allocated resources (must be freed)
     resources: VecDeque<Id>,
+    /// Externally provided resources (no need to free)
+    external: Vec<Id>,
+    /// Locks, unused for now
     locked: bool,
 }
 
 impl ResourceTracker {
+    /// Adds an external resource
+    pub fn external(&mut self, ids: &mut IdGen) -> Id {
+        let id = ids.next_id();
+        self.external.push(id);
+        id
+    }
+
     /// Allocates a resource
     pub fn allocate(&mut self, ids: &mut IdGen) -> Id {
-        let id = ids.next().unwrap();
+        let id = ids.next_id();
         self.resources.push_back(id);
         id
     }
@@ -31,7 +42,7 @@ impl ResourceTracker {
 
     /// Checks if a certain resource is available
     pub fn contains(&self, id: Id) -> bool {
-        self.resources.contains(&id)
+        self.resources.contains(&id) || self.external.contains(&id)
     }
 
     /// Locks
@@ -80,4 +91,9 @@ fn test_res_tracker() {
     assert!(tracker.is_locked());
     assert!(!tracker.lock());
     assert!(tracker.unlock());
+
+    assert!(tracker.is_empty());
+    assert_eq!(tracker.external(&mut IdGen::default()), 1);
+    assert!(tracker.is_empty());
+    assert!(tracker.contains(1));
 }

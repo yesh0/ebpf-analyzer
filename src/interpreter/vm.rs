@@ -142,7 +142,7 @@ impl Vm<Wrapping<u64>> for UncheckedVm<Wrapping<u64>> {
     }
 
     fn return_relative(&mut self) -> bool {
-        todo!()
+        false
     }
 }
 

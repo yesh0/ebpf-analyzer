@@ -6,6 +6,7 @@ pub type Id = u32;
 
 /// An id generator
 ///
+/// Ids start from 1.
 #[derive(Default)]
 pub struct IdGen(Id);
 

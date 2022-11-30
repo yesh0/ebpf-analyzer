@@ -5,7 +5,10 @@ use core::cell::RefCell;
 use alloc::{rc::Rc, vec::Vec};
 use ebpf_consts::STACK_SIZE;
 
-use crate::{track::{scalar::Scalar, TrackError, TrackedValue}, branch::id::Id};
+use crate::{
+    branch::id::Id,
+    track::{scalar::Scalar, TrackError, TrackedValue},
+};
 
 use super::{is_access_in_range, MemoryRegion, SafeClone};
 
@@ -186,7 +189,7 @@ impl MemoryRegion for StackRegion {
                 let index = Self::o2i(start);
                 if index < self.values.len() {
                     if let StackSlot::Value64(TrackedValue::Pointer(p)) = &self.values[index] {
-                        return Ok(TrackedValue::Pointer(p.clone()))
+                        return Ok(TrackedValue::Pointer(p.clone()));
                     }
                 }
             }
@@ -270,10 +273,12 @@ impl SafeClone for StackRegion {
         Rc::new(RefCell::new(c))
     }
 
-    fn redirects(&mut self, mapper: &dyn Fn(Id) -> super::Pointee) {
+    fn redirects(&mut self, mapper: &dyn Fn(Id) -> Option<super::Pointee>) {
         for ele in &mut self.values {
             if let StackSlot::Value64(TrackedValue::Pointer(p)) = ele {
-                p.redirect(mapper(p.get_pointing_to()));
+                if let Some(region) = mapper(p.get_pointing_to()) {
+                    p.redirect(region);
+                }
             }
         }
     }
@@ -304,11 +309,7 @@ pub fn test_clone() {
     let mut stack = StackRegion::new();
     let offset = Scalar::constant64(512 - 4);
     assert!(stack
-        .set(
-            &offset,
-            4,
-            &TrackedValue::Scalar(Scalar::constant64(1))
-        )
+        .set(&offset, 4, &TrackedValue::Scalar(Scalar::constant64(1)))
         .is_ok());
     match stack.get(&offset, 4) {
         Ok(TrackedValue::Scalar(s)) => assert!(s.value64().unwrap() == 1),

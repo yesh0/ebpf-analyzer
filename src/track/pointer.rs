@@ -191,7 +191,7 @@ impl Debug for Pointer {
             f.write_fmt(format_args!("Pointer{{off:{:?},", &self.offset))?;
         }
         f.write_fmt(format_args!(
-            "ptr:0x{:x}",
+            "ptr:0x{:x}}}",
             &if let Ok(region) = self.get_pointing_region().try_borrow() {
                 region.get_id() as usize
             } else {

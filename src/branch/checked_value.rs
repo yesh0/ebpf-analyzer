@@ -13,7 +13,7 @@ use ebpf_atomic::{Atomic, AtomicError};
 use crate::{
     interpreter::value::*,
     spec::proto::{ArgumentType, IllegalFunctionCall},
-    track::{scalar::Scalar, TrackedValue, pointer::Pointer},
+    track::{scalar::Scalar, TrackedValue, pointer::Pointer, pointees::InnerRegion},
 };
 
 /// A value wrapping up [TrackedValue] while also tracking its validity
@@ -107,6 +107,16 @@ impl CheckedValue {
                 } else {
                     Err(IllegalFunctionCall::TypeMismatch)
                 }
+            },
+            ArgumentType::ResourceType((type_id, _)) => {
+                if let Some(TrackedValue::Pointer(p)) = self.inner() {
+                    if let InnerRegion::Any((any, _)) = p.get_pointing_region().borrow_mut().inner() {
+                        if *type_id == any && p.is_mutable() && p.is_readable() && p.non_null() {
+                            return Ok(());
+                        }
+                    }
+                }
+                Err(IllegalFunctionCall::TypeMismatch)
             },
         }
     }

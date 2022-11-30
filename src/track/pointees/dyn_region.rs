@@ -56,7 +56,7 @@ impl SafeClone for DynamicRegion {
         Rc::new(RefCell::new(self.clone()))
     }
 
-    fn redirects(&mut self, _mapper: &dyn Fn(Id) -> Pointee) {}
+    fn redirects(&mut self, _mapper: &dyn Fn(Id) -> Option<Pointee>) {}
 }
 
 impl MemoryRegion for DynamicRegion {

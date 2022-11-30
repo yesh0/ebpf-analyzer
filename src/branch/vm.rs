@@ -16,7 +16,7 @@ use crate::{
     safe::{mut_borrow_items, safe_ref_unsafe_cell},
     spec::proto::VerifiableCall,
     track::{
-        pointees::{stack_region::StackRegion, Pointee},
+        pointees::{empty_region::EmptyRegion, stack_region::StackRegion, Pointee},
         pointer::{Pointer, PointerAttributes},
         scalar::Scalar,
         TrackedValue,
@@ -63,7 +63,7 @@ impl BranchState {
     ///
     /// Usually one should only use this at the start of verification.
     /// When branching, use [Clone] to duplicate the state.
-    pub fn new(regions: Vec<Pointee>, helpers: StaticHelpers) -> Self {
+    pub fn new(helpers: StaticHelpers) -> Self {
         let mut state = InnerState {
             pc: 0,
             ids: IdGen::default(),
@@ -71,7 +71,7 @@ impl BranchState {
             registers: Default::default(),
             stack: Rc::new(RefCell::new(StackRegion::new())),
             resources: ResourceTracker::default(),
-            regions,
+            regions: alloc::vec![EmptyRegion::instance()],
             helpers,
         };
         let mut frame = Pointer::new(
@@ -83,10 +83,9 @@ impl BranchState {
         );
         frame += &Scalar::constant64(512);
         *state.registers[10].inner_mut() = Some(TrackedValue::Pointer(frame));
-        state.stack.borrow_mut().set_id(state.ids.next_id());
-        for region in &state.regions {
-            region.borrow_mut().set_id(state.ids.next_id());
-        }
+        let id = state.ids.next_id();
+        debug_assert!(id == 1);
+        state.stack.borrow_mut().set_id(id);
         Self(UnsafeCell::new(state))
     }
 
@@ -117,9 +116,56 @@ impl BranchState {
     }
 
     /// Adds the region and sets its id
-    pub fn add_region(&mut self, region: Pointee) {
-        region.borrow_mut().set_id(self.inner_mut().ids.next_id());
-        self.inner_mut().regions.push(region);
+    pub fn add_external_resource(&mut self, region: Pointee) {
+        let inner = self.inner_mut();
+        let id = inner.resources.external(&mut inner.ids);
+        region.borrow_mut().set_id(id);
+        inner.regions.push(region);
+    }
+
+    /// Adds the region and sets its id
+    pub fn add_allocated_resource(&mut self, region: Pointee) {
+        let inner = self.inner_mut();
+        let id = inner.resources.allocate(&mut inner.ids);
+        region.borrow_mut().set_id(id);
+        inner.regions.push(region);
+    }
+
+    /// Deallocates a resource
+    pub fn deallocate_resource(&mut self, id: Id) {
+        let inner = self.inner_mut();
+        if inner.resources.deallocate(id) {
+            // Redirect all pointer to this region into an invalid region
+            let invalid = inner.regions[0].clone();
+            // Redirect registers
+            for reg in &mut inner.registers {
+                if let Some(TrackedValue::Pointer(p)) = reg.inner_mut() {
+                    if p.is_pointing_to(id) {
+                        p.redirect(invalid.clone());
+                    }
+                }
+            }
+            let redirector = |i| if i == id { Some(invalid.clone()) } else { None };
+            // Redirect stack
+            inner.stack.borrow_mut().redirects(&redirector);
+            // Redirect regions
+            for region in &inner.regions {
+                region.borrow_mut().redirects(&redirector);
+            }
+        } else {
+            self.invalidate("Deallocating unknown resource");
+        }
+    }
+
+    /// Returns `true` if the register is a pointer
+    /// and it points to a non-existing resource
+    pub fn is_invalid_resource(&self, i: u8) -> bool {
+        if let Some(TrackedValue::Pointer(p)) = self.ro_reg(i).inner() {
+            let id = p.get_pointing_to();
+            !self.inner().resources.contains(id)
+        } else {
+            false
+        }
     }
 
     fn inner(&self) -> &InnerState {
@@ -128,11 +174,6 @@ impl BranchState {
 
     fn inner_mut(&mut self) -> &mut InnerState {
         self.0.get_mut()
-    }
-
-    /// Retrieves the resource tracker
-    pub fn resources(&mut self) -> &mut ResourceTracker {
-        &mut self.inner_mut().resources
     }
 }
 
@@ -161,16 +202,16 @@ impl Clone for BranchState {
             .inner()
             .stack
             .borrow_mut()
-            .redirects(&|i| another.get_region(i));
+            .redirects(&|i| Some(another.get_region(i)));
         for region in &another.inner().regions {
             let mut borrow = region.borrow_mut();
             let id = borrow.get_id();
             let redirector = |i| {
-                if i == id {
+                Some(if i == id {
                     region.clone()
                 } else {
                     another.get_region_except(i, id)
-                }
+                })
             };
             borrow.redirects(&redirector);
         }
@@ -256,6 +297,13 @@ impl Vm<CheckedValue> for BranchState {
         } else if let Some(helper) = self.inner().helpers.get(helper as usize) {
             if let Ok(v) = helper.call(self) {
                 *self.reg(0) = v;
+                if !self.is_valid() {
+                    // Keep r1~r5 for debugging
+                    return;
+                }
+                for i in 1..=5 {
+                    *self.reg(i) = CheckedValue::default();
+                }
             } else {
                 self.invalidate("Function call failed");
             }
@@ -290,7 +338,7 @@ impl Debug for BranchState {
 #[cfg(test)]
 fn test_clone_or_not(clone: bool) {
     use crate::interpreter::value::Dereference;
-    let mut vm = BranchState::new(Vec::new(), &[]);
+    let mut vm = BranchState::new(&[]);
     let offset = &Scalar::constant64(512 - 4);
     assert!(vm
         .inner()
