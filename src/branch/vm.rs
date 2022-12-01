@@ -83,7 +83,7 @@ impl BranchState {
         );
         frame += &Scalar::constant64(512);
         *state.registers[10].inner_mut() = Some(TrackedValue::Pointer(frame));
-        let id = state.ids.next_id();
+        let id = state.resources.external(&mut state.ids);
         debug_assert!(id == 1);
         state.stack.borrow_mut().set_id(id);
         Self(UnsafeCell::new(state))
@@ -152,6 +152,7 @@ impl BranchState {
             for region in &inner.regions {
                 region.borrow_mut().redirects(&redirector);
             }
+            // TODO: Maybe remove that region from self.inner().regions
         } else {
             self.invalidate("Deallocating unknown resource");
         }
