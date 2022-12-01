@@ -1,8 +1,8 @@
 //! This file defines some traits used by the VM and the interpreter
-//! 
+//!
 //! The main trait is [VmValue],
 //! which should represent the available value manipulation operations in eBPF spec.
-//! 
+//!
 //! An implementation for [Wrapping<u64>] is provided.
 
 use core::ops::*;
@@ -71,15 +71,15 @@ impl Verifiable for Wrapping<u64> {
 /// Signed right shift, since we have no way to track the sign for `u64`
 pub trait ShiftAssign<Rhs = Self> {
     /// Sign extending right shift
-    /// 
+    ///
     /// The bit `width` is either `32` or `64`.
     fn signed_shr(&mut self, rhs: Rhs, width: u8);
     /// Unsigned right shift
-    /// 
+    ///
     /// The bit `width` is either `32` or `64`.
     fn r_shift(&mut self, rhs: Rhs, width: u8);
     /// Left shift
-    /// 
+    ///
     /// The bit `width` is either `32` or `64`.
     fn l_shift(&mut self, rhs: Rhs, width: u8);
 }
@@ -145,12 +145,12 @@ impl NegAssign for Wrapping<u64> {
 /// Implements the BPF_END operation
 pub trait ByteSwap {
     /// Swaps the bytes from host endianness to little endian
-    /// 
-    /// TODO: Check against Linux spec / implementation for detailed explanation
+    ///
+    /// Upper bits, if unused, are zeroed.
     fn host_to_le(&mut self, width: i32);
     /// Swaps the bytes from host endianness to big endian
-    /// 
-    /// TODO: Check against Linux spec / implementation for detailed explanation
+    ///
+    /// Upper bits, if unused, are zeroed.
     fn host_to_be(&mut self, width: i32);
 }
 
@@ -159,17 +159,10 @@ impl ByteSwap for u64 {
         match width {
             64 => *self = self.to_le(),
             32 => {
-                let lower = (*self as u32).to_le();
-                let upper = ((*self >> 32) as u32).to_le();
-                *self = ((upper as u64) << 32) | lower as u64
+                *self = (*self as u32).to_le() as u64
             }
             16 => {
-                let mut output = 0u64;
-                for i in 0..4 {
-                    let n = (((*self >> (i * 16)) & 0xFFFF) as u16).to_le();
-                    output |= (n as u64) << (i * 8);
-                }
-                *self = output
+                *self = (*self as u16).to_le() as u64
             }
             _ => *self = 0,
         }
@@ -179,17 +172,10 @@ impl ByteSwap for u64 {
         match width {
             64 => *self = self.to_be(),
             32 => {
-                let lower = (*self as u32).to_be();
-                let upper = ((*self >> 32) as u32).to_be();
-                *self = ((upper as u64) << 32) | lower as u64
+                *self = (*self as u32).to_be() as u64
             }
             16 => {
-                let mut output = 0u64;
-                for i in 0..4 {
-                    let n = (((*self >> (i * 16)) & 0xFFFF) as u16).to_be();
-                    output |= (n as u64) << (i * 8);
-                }
-                *self = output
+                *self = (*self as u16).to_be() as u64
             }
             _ => *self = 0,
         }
@@ -212,17 +198,17 @@ where
     Self: Sized,
 {
     /// Tries to dereference the pointer
-    /// 
+    ///
     /// - `size`: in bytes
-    /// 
+    ///
     /// # Safety
     /// It is only unsafe for interpreters.
     /// The verifier does not operate on raw pointers.
     unsafe fn get_at(&self, offset: i16, size: usize) -> Option<Self>;
     /// Tries to assign a value to the pointer
-    /// 
+    ///
     /// - `size`: in bytes
-    /// 
+    ///
     /// # Safety
     /// It is only unsafe for interpreters.
     /// The verifier does not operate on raw pointers.
