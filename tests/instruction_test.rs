@@ -6,7 +6,7 @@ use ebpf_analyzer::{
 use llvm_util::parse_llvm_dump;
 
 pub const SIMPLE1: &str = include_str!("bpf-src/simple-1.txt");
-pub const SIMPLE2: &str = include_str!("bpf-src/simple-2.txt");
+pub const SIMPLE2: &str = include_str!("bpf-src/asm/simple-2.txt");
 
 #[test]
 fn validate_valid_code() {

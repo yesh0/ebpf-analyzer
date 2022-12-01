@@ -28,5 +28,5 @@ Disassembly of section .text:
       17:	07 08 00 00 f8 ff ff ff	r8 += -8
       18:	07 07 00 00 ff ff ff ff	r7 += -1
       19:	25 07 f8 ff 01 00 00 00	if r7 > 1 goto -8 <LBB0_3>
-      20:	b7 00 00 00 00 00 00 00	r0 = 0
+      20:	b4 00 00 00 00 00 00 00	w0 = 0
       21:	95 00 00 00 00 00 00 00	exit
