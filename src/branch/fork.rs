@@ -12,6 +12,7 @@ use crate::{
     track::{
         comparable::{Comparable, ComparisonResult},
         pointees::InnerRegion,
+        pointer::Pointer,
         scalar,
         TrackedValue::{self, *},
     },
@@ -37,7 +38,7 @@ impl BranchState {
         }
     }
 
-    /// Sets the limit for a [crate::track::pointees::dyn_region::DynamicRegion].
+    /// Sets the limit for a [crate::track::pointees::dyn_region::DynamicRegion]
     fn fork_pointer_le(
         &mut self,
         dst: &mut TrackedValue,
@@ -45,39 +46,56 @@ impl BranchState {
         fork: &Fork,
     ) -> Result<Option<Branch>, ()> {
         if let (Pointer(p1), Pointer(p2)) = (dst, src) {
-            if p2.is_end_pointer()
-                && !p1.is_end_pointer()
-                && p1.non_null()
-                && p1.is_pointing_to(p2.get_pointing_to())
-            {
-                let pointee_ref = p1.get_pointing_region();
-                let mut pointee = pointee_ref.borrow_mut();
-                if let InnerRegion::Dyn(_) = pointee.inner() {
-                    // dropping to allow cloning
-                    drop(pointee);
-                    // fallthrough
-                    let mut branch = self.clone();
-                    *branch.pc() = fork.fall_through;
-                    // jumps
-                    let offset = p1.offset();
-                    // borrowing again
-                    let mut pointee = pointee_ref.borrow_mut();
-                    if let InnerRegion::Dyn(region) = pointee.inner() {
-                        region.set_limit(offset);
-                    } else {
-                        unreachable!();
-                    }
-                    *self.pc() = fork.target;
-                    Ok(Some(Rc::new(RefCell::new(branch))))
-                } else {
-                    self.invalidate("Only comparison of pointers of dynamic regions is allowed");
-                    Err(())
-                }
+            if p1.is_end_pointer() {
+                self.fork_pointer_le_end(p2, p1, &fork.flip())
             } else {
-                self.invalidate("Only comparison against an end pointer is allowed");
+                self.fork_pointer_le_end(p1, p2, fork)
+            }
+        } else {
+            Err(())
+        }
+    }
+
+    /// Sets the limit for a [crate::track::pointees::dyn_region::DynamicRegion]
+    ///
+    /// It handles only the case `ptr <= end`.
+    /// Use [self::fork_pointer_le()] to handle both, including `end <= ptr`.
+    fn fork_pointer_le_end(
+        &mut self,
+        p1: &mut Pointer,
+        p2: &mut Pointer,
+        fork: &Fork,
+    ) -> Result<Option<Branch>, ()> {
+        if p2.is_end_pointer()
+            && !p1.is_end_pointer()
+            && p1.non_null()
+            && p1.is_pointing_to(p2.get_pointing_to())
+        {
+            let pointee_ref = p1.get_pointing_region();
+            let mut pointee = pointee_ref.borrow_mut();
+            if let InnerRegion::Dyn(_) = pointee.inner() {
+                // dropping to allow cloning
+                drop(pointee);
+                // fallthrough
+                let mut branch = self.clone();
+                *branch.pc() = fork.fall_through;
+                // jumps
+                let offset = p1.offset();
+                // borrowing again
+                let mut pointee = pointee_ref.borrow_mut();
+                if let InnerRegion::Dyn(region) = pointee.inner() {
+                    region.set_limit(offset);
+                } else {
+                    unreachable!();
+                }
+                *self.pc() = fork.target;
+                Ok(Some(Rc::new(RefCell::new(branch))))
+            } else {
+                self.invalidate("Only comparison of pointers of dynamic regions is allowed");
                 Err(())
             }
         } else {
+            self.invalidate("Only comparison against an end pointer is allowed");
             Err(())
         }
     }

@@ -1,7 +1,7 @@
 //! This module defines trais used by the interpreter:
 //! - [VmContext]
 //! - [Forker]
-//! 
+//!
 //! Also, simplistic implementations are provided for [Wrapping<u64>].
 
 use core::{cell::RefCell, num::Wrapping};
@@ -30,13 +30,23 @@ impl<Value: VmValue, V: Vm<Value>> VmContext<Value, V> for NoOpContext {
 /// A fork, representing a conditional jump
 pub struct Fork {
     /// Where a conditional jump instruction jumps to if the condition were `true`
-    /// 
+    ///
     /// This is not an offset, and is directly assigned to the PC of the VM.
     pub target: usize,
     /// Where a conditional jump instruction jumps to if the condition were `false`
-    /// 
+    ///
     /// This is not an offset, and is directly assigned to the PC of the VM.
     pub fall_through: usize,
+}
+
+impl Fork {
+    /// Returns a new instance with its `target` and `fall_through` exchanged
+    ///
+    /// It is used when changing `if (a) { B } else { C }` into `if (!a) { C } else { B }`
+    /// to save some coding.
+    pub fn flip(&self) -> Fork {
+        Fork { target: self.fall_through, fall_through: self.target }
+    }
 }
 
 /// Generates the operations
@@ -56,10 +66,10 @@ macro_rules! forker_ops {
 }
 
 /// A forker that determines what direction(s) will the fork lead to
-/// 
+///
 /// For interpreters, it jumps depending on actual values, returning `None`.
 /// For verifiers, it optionally returns `Some` branch if it concludes that both branch can get executed.
-/// 
+///
 /// Note that to predict `ge` or `sgt`, just use `lt` or `sle` with the fork inverted.
 pub trait Forker<Value: VmValue, B: Vm<Value> + ?Sized> {
     forker_ops!(jeq, jset, jlt, jle, jslt, jsle);
