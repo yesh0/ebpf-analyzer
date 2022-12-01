@@ -3,9 +3,10 @@
 pub mod proto;
 
 use core::fmt::Debug;
+use core::hint::unreachable_unchecked;
 
-use ebpf_consts::*;
 use ebpf_consts::mask::*;
+use ebpf_consts::*;
 
 /// Instruction offset
 pub type CodeOffset = usize;
@@ -57,7 +58,7 @@ pub enum JumpInstruction {
 }
 
 /// Illegal instruction according to the spec
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub enum IllegalInstruction {
     /// Unrecognized opcode
     IllegalOpCode,
@@ -209,7 +210,7 @@ impl Instruction {
             BPF_JMP => self.is_jump_valid::<64>(),
             BPF_JMP32 => self.is_jump_valid::<32>(),
             BPF_ALU64 => self.is_arithmetic_valid(),
-            _ => unreachable!()
+            _ => unsafe { unreachable_unchecked() },
         }
     }
 
@@ -274,7 +275,9 @@ impl Instruction {
     ///   - BPF_LDX: Requires writable dst_reg, readable src_reg and off;
     ///   - BPF_STX: Requires readable dst_reg, readable src_reg and off;
     ///   - BPF_ST : Requires readable dst_reg, imm and off.
-    fn is_store_load_valid<const LOAD: bool, const IMM: bool>(self) -> Result<(), IllegalInstruction> {
+    fn is_store_load_valid<const LOAD: bool, const IMM: bool>(
+        self,
+    ) -> Result<(), IllegalInstruction> {
         if (self.opcode & BPF_OPCODE_MODIFIER_MASK) != BPF_MEM {
             return Err(IllegalInstruction::IllegalOpCode);
         }
@@ -355,10 +358,6 @@ impl Instruction {
     /// 3. BPF_ALU_END operates on dst_reg according to the immediate number, requiring BPF_ALU;
     /// 4. BPF_NEG reads and writes to from dst_reg, requiring BPF_K;
     /// 5. Others read from either src_reg or the immediate number.
-    ///
-    /// FIXME: Descriptions from https://docs.kernel.org/bpf/instruction-set.html
-    /// conflicts with https://github.com/iovisor/bpf-docs/blob/master/eBPF.md about BPF_NEG.
-    /// Please double check against the linux implementation.
     fn is_arithmetic_valid(self) -> Result<(), IllegalInstruction> {
         if self.off != 0 {
             return Err(IllegalInstruction::UnusedFieldNotZeroed);
@@ -436,7 +435,9 @@ impl Instruction {
     /// 3. Other instructions store into src_reg if the BPF_FETCH flag is set.
     fn is_atomic_store_valid(self) -> Result<(), IllegalInstruction> {
         let operant_size: u8 = self.opcode & BPF_OPCODE_SIZE_MASK;
-        if !((cfg!(atomic64) && operant_size == BPF_DW) || (cfg!(atomic32) && operant_size == BPF_W)) {
+        if !((cfg!(atomic64) && operant_size == BPF_DW)
+            || (cfg!(atomic32) && operant_size == BPF_W))
+        {
             return Err(IllegalInstruction::UnsupportedAtomicWidth);
         }
 
@@ -485,4 +486,101 @@ impl Debug for Instruction {
             self.imm
         ))
     }
+}
+
+#[test]
+fn test_misc() {
+    // Clone test
+    let i = Instruction::from_raw(0);
+    macro_rules! call_clone {
+        ($i:ident) => {
+            $i.clone()
+        };
+    }
+    let j = call_clone!(i);
+    assert_eq!(
+        Instruction::pack(j.opcode, j.src_reg(), j.src_reg(), j.off, j.imm),
+        0
+    );
+
+    // Debug test
+    extern crate std;
+    std::dbg!(IllegalInstruction::IllegalInstruction);
+}
+
+#[test]
+fn test_parsing() {
+    let code: &[u64] = &[
+        // 64-bit: addition
+        (BPF_ALU64 | BPF_ADD | BPF_K) as u64,
+        // 128-bit
+        (BPF_LD | BPF_DW | BPF_IMM) as u64 | (0xCAFE_BABEu64 << 32),
+        (0xDEAD_BEEFu64 << 32),
+        // half of 128-bit
+        (BPF_LD | BPF_DW | BPF_IMM) as u64,
+    ];
+    assert!(matches!(
+        Instruction::from(code, 0),
+        ParsedInstruction::Instruction(_)
+    ));
+    assert!(matches!(
+        Instruction::from(code, 1),
+        ParsedInstruction::WideInstruction(_)
+    ));
+    assert!(matches!(
+        Instruction::from(code, 3),
+        ParsedInstruction::None
+    ));
+
+    match Instruction::from(code, 1) {
+        ParsedInstruction::WideInstruction(w) => {
+            assert_eq!(w.imm0(), 0xCAFE_BABEu64 as i32);
+            assert_eq!(w.imm1(), 0xDEAD_BEEFu64 as i32);
+            assert_eq!(w.imm64(), 0xDEAD_BEEF_CAFE_BABE);
+        }
+        _ => panic!(),
+    }
+}
+
+#[test]
+fn test_wide_validation() {
+    let mut w = WideInstruction {
+        instruction: Instruction::from_raw(0),
+        imm: 0,
+    };
+    assert!(matches!(
+        w.validate(),
+        Err(IllegalInstruction::IllegalInstruction)
+    ));
+    w.instruction.opcode = BPF_LD | BPF_DW | BPF_IMM;
+    assert!(w.validate().is_ok());
+    let imm1_unused = [
+        BPF_IMM64_MAP_FD,
+        BPF_IMM64_MAP_IDX,
+        BPF_IMM64_BTF_ID,
+        BPF_IMM64_FUNC,
+    ];
+    let imm1_used = [BPF_IMM64_IMM, BPF_IMM64_MAP_VALUE, BPF_IMM64_MAP_IDX_VALUE];
+    w.imm = 0x1_0000_0000;
+    for src in 0..0b1111 {
+        w.instruction.regs = src << 4;
+        if imm1_unused.contains(&src) {
+            assert!(matches!(
+                w.validate(),
+                Err(IllegalInstruction::UnusedFieldNotZeroed)
+            ));
+        } else if imm1_used.contains(&src) {
+            assert!(w.validate().is_ok());
+        } else {
+            assert!(matches!(
+                w.validate(),
+                Err(IllegalInstruction::IllegalRegister)
+            ));
+        }
+    }
+    w.instruction.regs = 10;
+    assert!(matches!(
+        w.validate(),
+        Err(IllegalInstruction::IllegalRegister)
+    ));
 }

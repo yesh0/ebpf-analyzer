@@ -4,7 +4,10 @@ use ebpf_analyzer::{
     analyzer::{Analyzer, AnalyzerConfig, VerificationError},
     branch::{checked_value::CheckedValue, vm::BranchState},
     interpreter::vm::Vm,
-    spec::proto::{ArgumentType, IllegalFunctionCall, StaticFunctionCall, VerifiableCall, ReturnType, ResourceOperation},
+    spec::proto::{
+        ArgumentType, IllegalFunctionCall, ResourceOperation, ReturnType, StaticFunctionCall,
+        VerifiableCall,
+    },
     track::{
         pointees::{dyn_region::DynamicRegion, struct_region::StructRegion},
         pointer::{Pointer, PointerAttributes},
@@ -13,15 +16,6 @@ use ebpf_analyzer::{
     },
 };
 use llvm_util::parse_llvm_dump;
-
-pub const LOOP_OK: &str = include_str!("bpf-src/loop-ok.txt");
-pub const LOOP_NOT_OK: &str = include_str!("bpf-src/loop-not-ok.txt");
-pub const LOOP_OK_BUT: &str = include_str!("bpf-src/large-loop.txt");
-pub const LOOP_BRANCH_OK: &str = include_str!("bpf-src/branching-loop.txt");
-pub const DYN_OK: &str = include_str!("bpf-src/dynamic-range.txt");
-pub const DYN_FAIL: &str = include_str!("bpf-src/dynamic-fail.txt");
-pub const RESOURCE_OK: &str = include_str!("bpf-src/resource-ok.txt");
-pub const RESOURCE_FAIL: &str = include_str!("bpf-src/resource-fail.txt");
 
 struct AssertFunc;
 
@@ -50,41 +44,64 @@ impl VerifiableCall<CheckedValue, BranchState> for AsIsFunc {
 const HELPERS: AnalyzerConfig = AnalyzerConfig {
     helpers: &[
         // (0) nop
-        &StaticFunctionCall::new([
-            ArgumentType::Any,
-            ArgumentType::Any,
-            ArgumentType::Any,
-            ArgumentType::Any,
-            ArgumentType::Any,
-        ], ReturnType::None),
+        &StaticFunctionCall::new(
+            [
+                ArgumentType::Any,
+                ArgumentType::Any,
+                ArgumentType::Any,
+                ArgumentType::Any,
+                ArgumentType::Any,
+            ],
+            ReturnType::None,
+        ),
         // (1) assertion
         &AssertFunc {},
         // (2) as-is
         &AsIsFunc {},
         // (3) allocates resource 1
-        &StaticFunctionCall::new([
-            ArgumentType::Scalar,
-            ArgumentType::Any,
-            ArgumentType::Any,
-            ArgumentType::Any,
-            ArgumentType::Any,
-        ], ReturnType::AllocatedResource(1)),
+        &StaticFunctionCall::new(
+            [
+                ArgumentType::Scalar,
+                ArgumentType::Any,
+                ArgumentType::Any,
+                ArgumentType::Any,
+                ArgumentType::Any,
+            ],
+            ReturnType::AllocatedResource(1),
+        ),
         // (4) uses resource 1
-        &StaticFunctionCall::new([
-            ArgumentType::ResourceType((1, ResourceOperation::Unknown)),
-            ArgumentType::Any,
-            ArgumentType::Any,
-            ArgumentType::Any,
-            ArgumentType::Any,
-        ], ReturnType::None),
+        &StaticFunctionCall::new(
+            [
+                ArgumentType::ResourceType((1, ResourceOperation::Unknown)),
+                ArgumentType::Any,
+                ArgumentType::Any,
+                ArgumentType::Any,
+                ArgumentType::Any,
+            ],
+            ReturnType::None,
+        ),
         // (5) deallocates resource 1
-        &StaticFunctionCall::new([
-            ArgumentType::ResourceType((1, ResourceOperation::Deallocates)),
-            ArgumentType::Any,
-            ArgumentType::Any,
-            ArgumentType::Any,
-            ArgumentType::Any,
-        ], ReturnType::None),
+        &StaticFunctionCall::new(
+            [
+                ArgumentType::ResourceType((1, ResourceOperation::Deallocates)),
+                ArgumentType::Any,
+                ArgumentType::Any,
+                ArgumentType::Any,
+                ArgumentType::Any,
+            ],
+            ReturnType::None,
+        ),
+        // (6) printk
+        &StaticFunctionCall::new(
+            [
+                ArgumentType::DynamicMemory(2),
+                ArgumentType::Scalar,
+                ArgumentType::Any,
+                ArgumentType::Any,
+                ArgumentType::Any,
+            ],
+            ReturnType::None,
+        ),
     ],
     setup: |vm| {
         let region = Rc::new(RefCell::new(DynamicRegion::default()));
@@ -101,87 +118,63 @@ const HELPERS: AnalyzerConfig = AnalyzerConfig {
         );
         let context = Rc::new(RefCell::new(StructRegion::new(
             vec![pointer, end],
-            &[
-                1, 1, 1, 1, 1, 1, 1, 1,
-                2, 2, 2, 2, 2, 2, 2, 2,
-            ],
+            &[1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2],
         )));
         vm.add_external_resource(context.clone());
-        *vm.reg(1) = Pointer::new(PointerAttributes::NON_NULL | PointerAttributes::READABLE, context).into();
+        *vm.reg(1) = Pointer::new(
+            PointerAttributes::NON_NULL | PointerAttributes::READABLE,
+            context,
+        )
+        .into();
     },
 };
 
-#[test]
-fn test_ok_loop() {
-    let code = parse_llvm_dump(LOOP_OK);
-    match Analyzer::analyze(&code, &HELPERS) {
-        Ok(_) => {}
-        Err(VerificationError::IllegalStateChange(branch)) => {
-            panic!("{:?}", branch);
+macro_rules! define_test {
+    ($name:ident, $file:expr, $result:pat, $dump:block) => {
+        #[test]
+        fn $name() {
+            let code = parse_llvm_dump(include_str!($file));
+            match Analyzer::analyze(&code, &HELPERS) {
+                $result => $dump
+                Err(err) => panic!("Err: {:?}", err),
+                #[allow(unreachable_patterns)]
+                _ => panic!("Expecting failed invalidation"),
+            }
         }
-        Err(err) => panic!("Err: {:?}", err),
-    }
+    };
 }
 
-#[test]
-fn test_not_ok_loop() {
-    let code = parse_llvm_dump(LOOP_NOT_OK);
-    match Analyzer::analyze(&code, &HELPERS) {
-        Ok(_) => panic!("Err"),
-        Err(err) => std::println!("Error captured: {:?}", err),
-    }
-}
+define_test!(test_ok_loop, "bpf-src/loop-ok.txt", Ok(_), {});
+define_test!(
+    test_not_ok_loop,
+    "bpf-src/loop-not-ok.txt",
+    Err(VerificationError::IllegalStateChange(branch)),
+    { std::println!("Captured: {:?}", branch) }
+);
 
-#[test]
-fn test_branching() {
-    let code = parse_llvm_dump(LOOP_BRANCH_OK);
-    match Analyzer::analyze(&code, &HELPERS) {
-        Ok(_) => {}
-        Err(err) => panic!("Error captured: {:?}", err),
-    }
-}
+define_test!(test_branching, "bpf-src/branching-loop.txt", Ok(_), {});
+define_test!(test_costly, "bpf-src/large-loop.txt", Ok(_), {});
 
-#[test]
-fn test_costly() {
-    let code = parse_llvm_dump(LOOP_OK_BUT);
-    match Analyzer::analyze(&code, &HELPERS) {
-        Ok(_) => {}
-        Err(err) => panic!("Error captured: {:?}", err),
-    }
-}
+define_test!(test_dyn_region, "bpf-src/dynamic-range.txt", Ok(_), {});
+define_test!(
+    test_dyn_region_fail,
+    "bpf-src/dynamic-fail.txt",
+    Err(VerificationError::IllegalStateChange(branch)),
+    { std::println!("Captured: {:?}", branch) }
+);
 
-#[test]
-fn test_dyn_region() {
-    let code = parse_llvm_dump(DYN_OK);
-    match Analyzer::analyze(&code, &HELPERS) {
-        Ok(_) => {}
-        Err(err) => panic!("Error captured: {:?}", err),
-    }
-}
+define_test!(test_resource_ok, "bpf-src/resource-ok.txt", Ok(_), {});
+define_test!(
+    test_resource_fail,
+    "bpf-src/resource-fail.txt",
+    Err(VerificationError::IllegalStateChange(branch)),
+    { std::println!("Captured: {:?}", branch) }
+);
 
-#[test]
-fn test_dyn_region_fail() {
-    let code = parse_llvm_dump(DYN_FAIL);
-    match Analyzer::analyze(&code, &HELPERS) {
-        Ok(_) => panic!(),
-        Err(err) => std::println!("Error captured: {:?}", err),
-    }
-}
-
-#[test]
-fn test_resource_ok() {
-    let code = parse_llvm_dump(RESOURCE_OK);
-    match Analyzer::analyze(&code, &HELPERS) {
-        Ok(_) => {},
-        Err(err) => panic!("Error captured: {:?}", err),
-    }
-}
-
-#[test]
-fn test_resource_fail() {
-    let code = parse_llvm_dump(RESOURCE_FAIL);
-    match Analyzer::analyze(&code, &HELPERS) {
-        Ok(_) => panic!(),
-        Err(err) => std::println!("Error captured: {:?}", err),
-    }
-}
+define_test!(test_printk, "bpf-src/printk.txt", Ok(_), {});
+define_test!(
+    test_printk_fail,
+    "bpf-src/printk-fail.txt",
+    Err(VerificationError::IllegalStateChange(branch)),
+    { std::println!("Captured: {:?}", branch) }
+);

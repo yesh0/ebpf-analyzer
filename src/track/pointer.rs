@@ -35,7 +35,9 @@ bitflags! {
     }
 }
 
-/// A generic pointer, off-loading all the access checking work to [PointedValue].
+/// A generic pointer, off-loading all the access checking work to [Pointee]
+///
+/// Essentially, it is [Pointee] plus some [Scalar] offset with some [PointerAttributes].
 #[derive(Clone)]
 pub struct Pointer {
     attributes: PointerAttributes,

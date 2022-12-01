@@ -41,13 +41,7 @@ fn until_bracket(input: &ParseStream) -> syn::Result<Vec<Replacing>> {
     while !input.is_empty() && !input.peek(token::Bracket) && !input.peek(Token!(#)) {
         blocks.push(Replacing::None(
             input
-                .step(|c| {
-                    if let Some((tree, c)) = c.token_tree() {
-                        Ok((tree, c))
-                    } else {
-                        Err(c.error("Ended"))
-                    }
-                })?.to_token_stream(),
+                .step(|c| Ok(c.token_tree().unwrap()))?.to_token_stream(),
         ));
     }
     Ok(blocks)
@@ -176,4 +170,39 @@ impl Parse for Aliases {
         }
         Ok(result)
     }
+}
+
+#[test]
+fn test_parsers() {
+    let s = quote::quote! {
+        a as u8,
+        #
+    };
+    assert!(syn::parse2::<OpcodeMatches>(s).is_err());
+
+    let s = quote::quote! {
+        a as u8,
+        #[cfg(test)]
+        #[cfg(no_test)]
+        [[BPF_IMM: a]] => {}
+    };
+    assert!(syn::parse2::<OpcodeMatches>(s).is_ok());
+
+    let s = quote::quote! {
+        a as u8,
+        #[cfg(test)]
+        #[cfg(no_test)]
+        0 => {}
+        [[BPF_IMM: a]] => {}
+    };
+    assert!(syn::parse2::<OpcodeMatches>(s).is_ok());
+
+    let s = quote::quote! {
+        a as u8,
+        #[cfg(test)]
+        #[cfg(no_test)]
+        0 => {}
+        [[A: a]] => {}
+    };
+    assert!(syn::parse2::<OpcodeMatches>(s).is_err());
 }
