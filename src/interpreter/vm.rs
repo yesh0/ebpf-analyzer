@@ -41,6 +41,9 @@ pub trait Vm<Value: VmValue>: Forker<Value, Self> {
     /// Use it to get an reference behind a [RefMut] if you absolutely need it.
     unsafe fn dup(&mut self) -> &mut Self;
     /// Gets the values of two registers
+    ///
+    /// The implementation should support double borrows,
+    /// by possibly allocating an extra temporary value.
     fn two_regs(&mut self, i: u8, j: u8) -> Option<(&mut Value, &mut Value)>;
     /// Gets the values of two registers
     fn three_regs(&mut self, i: u8, j: u8, k: u8) -> Option<(&mut Value, &mut Value, &mut Value)>;
@@ -62,6 +65,14 @@ struct UncheckedInnerVm<Value: VmValue> {
     registers: [Value; READABLE_REGISTER_COUNT as usize],
     stack: Vec<Value>,
     helpers: HelperCollection,
+    /// Temporary value
+    ///
+    /// Rust forbids borrowing the same value twice,
+    /// thus making safe implementation of instructions like `mul r1, r1` impossible.
+    ///
+    /// Currently we just use an extra temporary value for double borrows
+    /// and forbid triple borrows (for BPF_ATOMIC_CMPXCHG using `r0`).
+    temp: Value,
 }
 
 /// A VM impl
@@ -92,7 +103,7 @@ impl Vm<Wrapping<u64>> for UncheckedVm<Wrapping<u64>> {
     }
 
     fn update_reg(&mut self, reg: u8) {
-        if !self.reg(reg).is_valid() {
+        if !self.ro_reg(reg).is_valid() {
             self.invalidate("Value invalid");
         }
     }
@@ -111,7 +122,17 @@ impl Vm<Wrapping<u64>> for UncheckedVm<Wrapping<u64>> {
     }
 
     fn two_regs(&mut self, i: u8, j: u8) -> Option<(&mut Value, &mut Value)> {
-        mut_borrow_items!(self.0.get_mut().registers, [i as usize, j as usize], Value)
+        if i == j {
+            let inner = self.0.get_mut();
+            if i < WRITABLE_REGISTER_COUNT {
+                inner.temp = inner.registers[i as usize];
+                Some((&mut inner.registers[i as usize], &mut inner.temp))
+            } else {
+                None
+            }
+        } else {
+            mut_borrow_items!(self.0.get_mut().registers, [i as usize, j as usize], Value)
+        }
     }
 
     fn three_regs(&mut self, i: u8, j: u8, k: u8) -> Option<(&mut Value, &mut Value, &mut Value)> {
@@ -155,6 +176,7 @@ impl<Value: VmValue> UncheckedVm<Value> {
             registers: Default::default(),
             stack: Vec::new(),
             helpers,
+            temp: Value::default(),
         };
         vm.stack.resize(STACK_SIZE / 8, Value::default());
         vm.registers[STACK_REGISTER as usize] =

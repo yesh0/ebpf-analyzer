@@ -40,6 +40,12 @@ struct InnerState {
     ids: IdGen,
     invalid: Option<&'static str>,
     registers: [CheckedValue; 11],
+    /// A temporary value to allow borrowing the "same" register
+    /// for instructions like `mul r1, r1`
+    ///
+    /// The value is only exposed when calling `two_regs` with two identical register index,
+    /// and should always be valid.
+    temp_reg: CheckedValue,
     stack: Pointee,
     regions: Vec<Pointee>,
     helpers: StaticHelpers,
@@ -69,6 +75,7 @@ impl BranchState {
             ids: IdGen::default(),
             invalid: None,
             registers: Default::default(),
+            temp_reg: Scalar::unknown().into(),
             stack: Rc::new(RefCell::new(StackRegion::new())),
             resources: ResourceTracker::default(),
             regions: alloc::vec![EmptyRegion::instance()],
@@ -185,19 +192,21 @@ impl Clone for BranchState {
     /// making the pointer in the generated state independent of the cloned one.
     fn clone(&self) -> Self {
         let mut regions = Vec::new();
-        regions.reserve(self.inner().regions.len());
-        for region in &self.inner().regions {
+        let inner = self.inner();
+        regions.reserve(inner.regions.len());
+        for region in &inner.regions {
             regions.push(region.borrow().safe_clone());
         }
         let mut another = Self(UnsafeCell::new(InnerState {
-            pc: self.inner().pc,
+            pc: inner.pc,
             ids: IdGen::default(),
             invalid: None,
             registers: Default::default(),
-            stack: self.inner().stack.borrow().safe_clone(),
-            resources: self.inner().resources.clone(),
+            temp_reg: inner.temp_reg.clone(),
+            stack: inner.stack.borrow().safe_clone(),
+            resources: inner.resources.clone(),
             regions,
-            helpers: self.inner().helpers,
+            helpers: inner.helpers,
         }));
         another
             .inner()
@@ -216,7 +225,7 @@ impl Clone for BranchState {
             };
             borrow.redirects(&redirector);
         }
-        for (i, register) in self.inner().registers.iter().enumerate() {
+        for (i, register) in inner.registers.iter().enumerate() {
             let mut v = register.clone();
             if let Some(TrackedValue::Pointer(ref mut p)) = v.inner_mut() {
                 p.redirect(another.get_region(p.get_pointing_to()));
@@ -240,7 +249,7 @@ impl Vm<CheckedValue> for BranchState {
     }
 
     fn is_valid(&self) -> bool {
-        self.inner().invalid.is_none()
+        self.inner().invalid.is_none() || !self.inner().temp_reg.is_valid()
     }
 
     fn reg(&mut self, i: u8) -> &mut CheckedValue {
@@ -253,7 +262,7 @@ impl Vm<CheckedValue> for BranchState {
     }
 
     fn update_reg(&mut self, reg: u8) {
-        if !self.ro_reg(reg).is_valid() {
+        if !(self.ro_reg(reg).is_valid() && self.inner().temp_reg.is_valid()) {
             self.invalidate("Register invalid")
         }
     }
@@ -268,11 +277,21 @@ impl Vm<CheckedValue> for BranchState {
     }
 
     fn two_regs(&mut self, i: u8, j: u8) -> Option<(&mut CheckedValue, &mut CheckedValue)> {
-        mut_borrow_items!(
-            self.inner_mut().registers,
-            [i as usize, j as usize],
-            CheckedValue
-        )
+        if i == j {
+            if i < WRITABLE_REGISTER_COUNT {
+                let inner = self.inner_mut();
+                inner.temp_reg = inner.registers[i as usize].clone();
+                Some((&mut inner.registers[i as usize], &mut inner.temp_reg))
+            } else {
+                None
+            }
+        } else {
+            mut_borrow_items!(
+                self.inner_mut().registers,
+                [i as usize, j as usize],
+                CheckedValue
+            )
+        }
     }
 
     fn three_regs(
