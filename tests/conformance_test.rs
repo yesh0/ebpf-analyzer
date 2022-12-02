@@ -109,7 +109,10 @@ fn analyze_with_conformance_data(data: &ConformanceData) -> Result<(), ()> {
             dbg!(branch);
             Err(())
         }
-        Err(_) => Err(()),
+        Err(e) => {
+            dbg!(e);
+            Err(())
+        },
     }
 }
 

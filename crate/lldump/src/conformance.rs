@@ -20,6 +20,7 @@ fn parse_bytes(s: &str) -> Vec<u8> {
 /// Decodes [bpf_conformance](https://github.com/Alan-Jowett/bpf_conformance) debug output
 pub fn get_conformance_data(path: &str) -> Result<ConformanceData, io::Error> {
     let content = fs::read_to_string(path)?;
+    println!("Full content:\n{}\n", &content);
     let mut data = ConformanceData {
         name: path.into(),
         memory: Vec::new(),
