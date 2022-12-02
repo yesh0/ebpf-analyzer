@@ -214,12 +214,12 @@ impl Instruction {
         }
     }
 
-    /// `src_reg`
+    /// `src_reg` (upper 4-bits)
     pub fn src_reg(self) -> u8 {
         self.regs >> 4
     }
 
-    /// `dst_reg`
+    /// `dst_reg` (lower 4-bits)
     pub fn dst_reg(self) -> u8 {
         self.regs & 0x0F
     }
@@ -435,43 +435,27 @@ impl Instruction {
     /// 3. Other instructions store into src_reg if the BPF_FETCH flag is set.
     fn is_atomic_store_valid(self) -> Result<(), IllegalInstruction> {
         let operant_size: u8 = self.opcode & BPF_OPCODE_SIZE_MASK;
-        if !((cfg!(atomic64) && operant_size == BPF_DW)
-            || (cfg!(atomic32) && operant_size == BPF_W))
+        if !((cfg!(feature = "atomic64") && operant_size == BPF_DW)
+            || (cfg!(feature = "atomic32") && operant_size == BPF_W))
         {
             return Err(IllegalInstruction::UnsupportedAtomicWidth);
         }
 
-        match self.imm {
-            BPF_ATOMIC_XCHG => {
-                if self.src_reg() >= WRITABLE_REGISTER_COUNT
-                    || self.dst_reg() >= READABLE_REGISTER_COUNT
-                {
-                    return Err(IllegalInstruction::IllegalRegister);
-                }
-                if self.imm == 0 {
-                    Ok(())
-                } else {
-                    Err(IllegalInstruction::UnusedFieldNotZeroed)
-                }
-            }
-            _ => {
-                if self.dst_reg() >= READABLE_REGISTER_COUNT {
-                    return Err(IllegalInstruction::IllegalRegister);
-                }
-                if self.imm != BPF_ATOMIC_CMPXCHG && (self.imm & BPF_ATOMIC_FETCH) != 0 {
-                    if self.src_reg() >= WRITABLE_REGISTER_COUNT {
-                        return Err(IllegalInstruction::IllegalRegister);
-                    }
-                } else if self.src_reg() >= READABLE_REGISTER_COUNT {
-                    return Err(IllegalInstruction::IllegalRegister);
-                }
-                if self.imm == 0 {
-                    Ok(())
-                } else {
-                    Err(IllegalInstruction::UnusedFieldNotZeroed)
-                }
-            }
+        if self.dst_reg() >= READABLE_REGISTER_COUNT {
+            return Err(IllegalInstruction::IllegalRegister);
         }
+
+        let src_limit = if self.imm == BPF_ATOMIC_CMPXCHG || (self.imm & BPF_ATOMIC_FETCH) == 0 {
+            READABLE_REGISTER_COUNT
+        } else {
+            WRITABLE_REGISTER_COUNT
+        };
+
+        if self.src_reg() >= src_limit {
+            return Err(IllegalInstruction::IllegalRegister);
+        }
+
+        Ok(())
     }
 }
 
@@ -583,4 +567,32 @@ fn test_wide_validation() {
         w.validate(),
         Err(IllegalInstruction::IllegalRegister)
     ));
+}
+
+#[cfg(all(feature = "atomic32", feature = "atomic64"))]
+#[test]
+fn test_atomic_validation() {
+    let mut i = Instruction::from_raw(Instruction::pack(
+        BPF_ATOMIC | BPF_B | BPF_STX,
+        0,
+        0,
+        0,
+        BPF_ATOMIC_FETCH | BPF_ATOMIC_ADD,
+    ));
+    assert!(matches!(i.is_atomic_store_valid(), Err(IllegalInstruction::UnsupportedAtomicWidth)));
+    i.opcode = BPF_ATOMIC | BPF_DW | BPF_STX;
+    assert!(i.is_atomic_store_valid().is_ok());
+    i.regs = 0xb;
+    assert_eq!(i.dst_reg(), 11);
+    assert!(matches!(i.is_atomic_store_valid(), Err(IllegalInstruction::IllegalRegister)));
+    i.regs = 0xb0;
+    assert_eq!(i.src_reg(), 11);
+    assert!(matches!(i.is_atomic_store_valid(), Err(IllegalInstruction::IllegalRegister)));
+    assert!(Instruction::from_raw(Instruction::pack(
+        BPF_ATOMIC | BPF_W | BPF_STX,
+        0,
+        0,
+        0,
+        BPF_ATOMIC_ADD,
+    )).validate().is_ok());
 }
