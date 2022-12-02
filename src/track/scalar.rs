@@ -28,7 +28,7 @@ pub struct Scalar {
 }
 
 /// Shift operations
-/// 
+///
 /// - `WIDTH`: in bits (32 or 64)
 pub trait ShiftAssign<const WIDTH: u8, Rhs = Self> {
     /// Left shift
@@ -275,7 +275,7 @@ impl Scalar {
                 if shift >= $width as u64 {
                     // Undefined shifts
                     self.$urange.mark_as_unknown();
-                } else if max > (1 << ($width as u64 - shift)) {
+                } else if shift != 0 && max > (1 << ($width as u64 - shift)) {
                     // Some bits are shifted off
                     self.$urange.mark_as_unknown();
                 } else {
