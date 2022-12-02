@@ -77,7 +77,7 @@ pub trait Forker<Value: VmValue, B: Vm<Value> + ?Sized> {
 
 macro_rules! fork_it {
     ($self:ident, $dst:ident, $src:ident, $fork:ident, $op:ident, $t:ident) => {{
-        *$self.pc() = if ($dst.1.0 as u32).$op(&($src.1.0 as u32)) {
+        *$self.pc() = if ($dst.1.0 as $t).$op(&($src.1.0 as $t)) {
             $fork.target
         } else {
             $fork.fall_through

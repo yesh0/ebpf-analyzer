@@ -5,8 +5,8 @@
 //!
 //! An implementation for [Wrapping<u64>] is provided.
 
-use core::ops::*;
 use core::num::Wrapping;
+use core::ops::*;
 
 use ebpf_atomic::Atomic;
 
@@ -158,12 +158,8 @@ impl ByteSwap for u64 {
     fn host_to_le(&mut self, width: i32) {
         match width {
             64 => *self = self.to_le(),
-            32 => {
-                *self = (*self as u32).to_le() as u64
-            }
-            16 => {
-                *self = (*self as u16).to_le() as u64
-            }
+            32 => *self = (*self as u32).to_le() as u64,
+            16 => *self = (*self as u16).to_le() as u64,
             _ => *self = 0,
         }
     }
@@ -171,12 +167,8 @@ impl ByteSwap for u64 {
     fn host_to_be(&mut self, width: i32) {
         match width {
             64 => *self = self.to_be(),
-            32 => {
-                *self = (*self as u32).to_be() as u64
-            }
-            16 => {
-                *self = (*self as u16).to_be() as u64
-            }
+            32 => *self = (*self as u32).to_be() as u64,
+            16 => *self = (*self as u16).to_be() as u64,
             _ => *self = 0,
         }
     }
@@ -254,6 +246,46 @@ impl Dereference for Wrapping<u64> {
     }
 }
 
+/// Divisions with zero-division checking
+pub trait SafeDivAssign<Rhs = Self>: DivAssign<Rhs> + RemAssign<Rhs> {
+    /// Divisions with zero-division checking
+    fn safe_div_assign(&mut self, rhs: Rhs) {
+        self.div_assign(rhs)
+    }
+    /// Divisions with zero-division checking
+    fn safe_rem_assign(&mut self, rhs: Rhs) {
+        self.rem_assign(rhs)
+    }
+}
+
+impl SafeDivAssign<&Self> for u64 {
+    /// Division, except that when rhs is zero, self is zeored
+    fn safe_div_assign(&mut self, rhs: &Self) {
+        if *rhs == 0 {
+            *self = 0
+        } else {
+            self.div_assign(rhs)
+        }
+    }
+
+    /// Division, except that when rhs is zero, self is kept as is
+    fn safe_rem_assign(&mut self, rhs: &Self) {
+        if *rhs != 0 {
+            self.rem_assign(rhs)
+        }
+    }
+}
+
+impl SafeDivAssign<&Self> for Wrapping<u64> {
+    fn safe_div_assign(&mut self, rhs: &Self) {
+        self.0.safe_div_assign(&rhs.0)
+    }
+
+    fn safe_rem_assign(&mut self, rhs: &Self) {
+        self.0.safe_rem_assign(&rhs.0)
+    }
+}
+
 /// Scalar operations
 pub trait VmScalar:
     // Type conversion
@@ -262,8 +294,7 @@ pub trait VmScalar:
     + for<'a> AddAssign<&'a Self>
     + for<'a> SubAssign<&'a Self>
     + for<'a> MulAssign<&'a Self>
-    + for<'a> DivAssign<&'a Self>
-    + for<'a> RemAssign<&'a Self>
+    + for<'a> SafeDivAssign<&'a Self>
     // Binary ALU operators: Bitwise
     + for<'a> BitAndAssign<&'a Self>
     + for<'a> BitOrAssign<&'a Self>
@@ -307,8 +338,7 @@ impl VmScalar for u64 {
     }
 }
 
-impl VmValue for u64 {
-}
+impl VmValue for u64 {}
 
 impl VmScalar for Wrapping<u64> {
     fn constanti32(value: i32) -> Self {
@@ -324,5 +354,4 @@ impl VmScalar for Wrapping<u64> {
     }
 }
 
-impl VmValue for Wrapping<u64> {
-}
+impl VmValue for Wrapping<u64> {}

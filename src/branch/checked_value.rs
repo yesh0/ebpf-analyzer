@@ -2,18 +2,14 @@
 //! and is used with [super::vm::BranchState] in [crate::interpreter::run]
 //! to deduce possible values.
 
-use core::{
-    cell::UnsafeCell,
-    fmt::Debug,
-    ops::*,
-};
+use core::{cell::UnsafeCell, fmt::Debug, ops::*};
 
 use ebpf_atomic::{Atomic, AtomicError};
 
 use crate::{
     interpreter::value::*,
     spec::proto::{ArgumentType, IllegalFunctionCall},
-    track::{scalar::Scalar, TrackedValue, pointer::Pointer, pointees::InnerRegion},
+    track::{pointees::InnerRegion, pointer::Pointer, scalar::Scalar, TrackedValue},
 };
 
 /// A value wrapping up [TrackedValue] while also tracking its validity
@@ -107,17 +103,18 @@ impl CheckedValue {
                 } else {
                     Err(IllegalFunctionCall::TypeMismatch)
                 }
-            },
+            }
             ArgumentType::ResourceType((type_id, _)) => {
                 if let Some(TrackedValue::Pointer(p)) = self.inner() {
-                    if let InnerRegion::Any((any, _)) = p.get_pointing_region().borrow_mut().inner() {
+                    if let InnerRegion::Any((any, _)) = p.get_pointing_region().borrow_mut().inner()
+                    {
                         if *type_id == any && p.is_mutable() && p.is_readable() && p.non_null() {
                             return Ok(());
                         }
                     }
                 }
                 Err(IllegalFunctionCall::TypeMismatch)
-            },
+            }
         }
     }
 }
@@ -174,7 +171,7 @@ macro_rules! impl_scalar_or_pointer_assign_op {
                     let mut value = p2.clone();
                     value.$fn(s1);
                     *v1 = TrackedValue::Pointer(value);
-                },
+                }
                 _ => self.invalidate(),
             }
         }
@@ -254,6 +251,9 @@ impl<'a> BitOrAssign<&'a Self> for CheckedValue {
 impl<'a> BitXorAssign<&'a Self> for CheckedValue {
     impl_scalar_only_assign_op!(bitxor_assign);
 }
+
+// TODO: Maybe prevent intentional zero division (against a constant zero register)
+impl SafeDivAssign<&Self> for CheckedValue {}
 
 macro_rules! impl_checked_shift {
     ($op:ident, $self:ident, $rhs:ident, $width:expr) => {{

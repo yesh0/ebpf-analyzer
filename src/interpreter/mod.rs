@@ -60,8 +60,8 @@ pub fn run<Value: VmValue, M: Vm<Value>, C: VmContext<Value, M>>(
                 BPF_ADD: add_assign,
                 BPF_SUB: sub_assign,
                 BPF_MUL: mul_assign,
-                BPF_DIV: div_assign,
-                BPF_MOD: rem_assign,
+                BPF_DIV: safe_div_assign,
+                BPF_MOD: safe_rem_assign,
                 // Bitwise
                 BPF_AND: bitand_assign,
                 BPF_OR : bitor_assign,
@@ -172,10 +172,10 @@ pub fn run<Value: VmValue, M: Vm<Value>, C: VmContext<Value, M>>(
             ] => {
                 let dst_r = insn.dst_reg();
                 let dst = vm.reg(dst_r);
+                dst.#=2();
                 #?((ALU32))
                     dst.lower_half_assign();
                 ##
-                dst.#=2();
                 vm.update_reg(dst_r);
             }
             // ALU / ALU64: Byte swap
