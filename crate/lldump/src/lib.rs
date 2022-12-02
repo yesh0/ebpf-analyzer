@@ -1,6 +1,7 @@
 //! This crate is a mess, containing all kinds of utilities for tests.
 
 pub mod helper;
+pub mod conformance;
 
 fn from_bytes(s: &[&str], i: usize) -> u64 {
     let mut result = 0;

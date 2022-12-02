@@ -5,3 +5,6 @@ target/
 Cargo.lock
 
 .vscode
+
+# Have yet to decide upon a project license
+tests/conformance

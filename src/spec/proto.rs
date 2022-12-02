@@ -91,6 +91,20 @@ impl StaticFunctionCall {
     pub const fn new(arguments: Arguments, returns: ReturnType) -> StaticFunctionCall {
         StaticFunctionCall { arguments, returns }
     }
+
+    /// Returns a nop function
+    pub const fn nop() -> StaticFunctionCall {
+        StaticFunctionCall {
+            arguments: [
+                ArgumentType::Any,
+                ArgumentType::Any,
+                ArgumentType::Any,
+                ArgumentType::Any,
+                ArgumentType::Any,
+            ],
+            returns: ReturnType::None,
+        }
+    }
 }
 
 impl VerifiableCall<CheckedValue, BranchState> for StaticFunctionCall {

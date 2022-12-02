@@ -20,6 +20,8 @@ jobs:
           toolchain: nightly
           override: true
           components: clippy
+      - name: Generate conformance tests
+        run: make conformance-gen
       - name: Build
         run: cargo build --verbose
       - name: Clippy

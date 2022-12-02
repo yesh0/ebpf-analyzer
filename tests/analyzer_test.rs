@@ -103,7 +103,7 @@ const HELPERS: AnalyzerConfig = AnalyzerConfig {
             ReturnType::None,
         ),
     ],
-    setup: |vm| {
+    setup: &|vm| {
         let region = Rc::new(RefCell::new(DynamicRegion::default()));
         vm.add_external_resource(region.clone());
         let pointer = Pointer::new(

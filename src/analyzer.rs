@@ -15,13 +15,13 @@ use crate::{
 };
 
 /// Configuration: how the analyzer checks the code
-pub struct AnalyzerConfig {
+pub struct AnalyzerConfig<'a> {
     /// Helper function calls used by the function
     pub helpers: StaticHelpers,
     /// How a VM should be setup
     ///
     /// Users may inject parameters here.
-    pub setup: fn(&mut BranchState),
+    pub setup: &'a dyn Fn(&mut BranchState),
 }
 
 /// The analyzer (or eBPF verifier)
