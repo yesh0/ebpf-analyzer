@@ -76,7 +76,7 @@ pub fn test_algebra() {
     assert_biop(BPF_ALU | BPF_MOD | BPF_K, 0x1010, 0x1000, 0x10);
 
     assert_biop(BPF_ALU64 | BPF_NEG | BPF_K, 0x1, 0, 0xFFFFFFFFFFFFFFFF);
-    assert_biop(BPF_ALU | BPF_NEG | BPF_K, 0x1, 0, 0xFFFFFFFFFFFFFFFF);
+    assert_biop(BPF_ALU | BPF_NEG | BPF_K, 0x1, 0, 0xFFFFFFFF);
 
     assert_biop(BPF_ALU64 | BPF_MOV | BPF_X, 0x1, 0xFFFFFFFF, 0xFFFFFFFF);
     assert_biop(BPF_ALU | BPF_MOV | BPF_X, 0x1, 0xFFFFFFFFFFFF, 0xFFFFFFFF);
