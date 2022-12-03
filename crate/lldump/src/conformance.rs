@@ -37,10 +37,11 @@ pub fn get_conformance_data(path: &str) -> Result<ConformanceData, io::Error> {
         } else if let Some(info) = line.strip_prefix("Expected error string: ") {
             data.error = info.into();
         } else if let Some(info) = line.strip_prefix("Byte code: ") {
-            assert_eq!(info.len() % 8, 0);
+            let bytes = parse_bytes(info);
+            assert_eq!(bytes.len() % 8, 0);
             data.code.clear();
-            data.code.reserve(info.len() / 8);
-            for dw in parse_bytes(info).chunks(8) {
+            data.code.reserve(bytes.len() / 8);
+            for dw in bytes.chunks(8) {
                 let mut array: [u8; 8] = Default::default();
                 array.copy_from_slice(dw);
                 data.code.push(u64::from_ne_bytes(array));

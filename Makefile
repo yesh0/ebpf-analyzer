@@ -7,7 +7,7 @@ $(BPF_SOURCE): $(BPF_DIR)/%.c
 bpf-gen: $(addsuffix .txt, $(basename $(wildcard $(BPF_DIR)/*.c)))
 
 conformance-gen:
-	scripts/conformance.sh /tmp/bpf_conformance ./tests/conformance
+	scripts/conformance.sh target/bpf_conformance ./tests/conformance ./tests/bpf-src/asm
 
 clean:
 	rm $(BPF_DIR)/*.txt

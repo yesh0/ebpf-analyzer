@@ -105,7 +105,7 @@ fn analyze_with_conformance_data(data: &ConformanceData) -> Result<(), ()> {
         Err(e) => {
             dbg!(e);
             Err(())
-        },
+        }
     }
 }
 
@@ -117,8 +117,12 @@ fn test_conformance() -> Result<(), io::Error> {
     assert!(cfg!(feature = "atomic32"));
     assert!(cfg!(feature = "atomic64"));
 
-    for entry in fs::read_dir(Path::new(DATA_DIR))? {
-        let entry = entry?;
+    let mut entries: Vec<_> = fs::read_dir(Path::new(DATA_DIR))?
+        .filter(|r| r.is_ok())
+        .map(|ok| ok.ok().unwrap())
+        .collect();
+    entries.sort_unstable_by_key(|a| a.file_name());
+    for entry in entries {
         let data = get_conformance_data(entry.path().to_str().unwrap())
             .ok()
             .unwrap();

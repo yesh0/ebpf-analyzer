@@ -3,8 +3,8 @@
 # Generate conformance data from https://github.com/Alan-Jowett/bpf_conformance
 # We are using it for our tests, so not bothering writing a plugin.
 
-if [ "$#" -ne 2 ]; then
-  echo "Usage: $0 <build_dir> <output_dir>"
+if [ "$#" -ne 3 ]; then
+  echo "Usage: $0 <build_dir> <output_dir> <custom_test_dir>"
   exit 1
 fi
 
@@ -20,13 +20,26 @@ if ! [[ -d "$1/build" ]]; then
 fi
 cmake --build "$1/build"
 
+runner="$1/build/bin/bpf_conformance_runner"
+output_dir="$2"
+
+gen_test() {
+  base=$(basename "$1")
+  output=$(realpath "$output_dir/$base.txt")
+  echo "$1 => $output"
+  # Extracts license info
+  grep "^#" "$1" > "$output"
+  # Appends contents
+  $runner --test_file_path "$1"     \
+          --plugin_path /bin/true   \
+          --debug true >> "$output"  \
+          2>&1 || true
+}
+
 for test in "$1/tests"/*; do
-  base=$(basename "$test")
-  output=$(realpath "$2/$base.txt")
-  echo "--test_file_path \"$test\" --plugin_path /bin/true --debug true &> \"$output\""
-  "$1/build/bin/bpf_conformance_runner" \
-              --test_file_path "$test"  \
-              --plugin_path /bin/true   \
-              --debug true > "$output"  \
-              2>&1 || true
+  gen_test "$test"
+done
+
+for test in "$3"/*.data; do
+  gen_test "$test"
 done
