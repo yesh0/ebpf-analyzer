@@ -38,7 +38,13 @@ fn test_with_conformance_data(data: ConformanceData) -> Result<(), ()> {
     )));
     if data.error.is_empty() {
         println!("Testing {}", data.name);
-        analyze_with_conformance_data(&data)?;
+        let result = analyze_with_conformance_data(&data);
+        if data.name.contains("-fail") {
+            assert!(result.is_err());
+            return Ok(());
+        } else {
+            assert!(result.is_ok(), "{:?}", result);
+        }
         v.borrow_mut().reg(0).0 = 0xCAFEu64;
         v.borrow_mut().reg(1).0 = data.memory.as_ptr() as u64;
         v.borrow_mut().reg(2).0 = data.memory.len() as u64;
