@@ -9,22 +9,32 @@ use core::{cell::RefCell, num::Wrapping};
 use alloc::rc::Rc;
 
 use super::{
-    value::VmValue,
+    value::{Verifiable, VmValue},
     vm::{UncheckedVm, Vm},
 };
 
 /// Execution context for a VM, designed for verifier branch tracking
-pub trait VmContext<Value: VmValue, V: Vm<Value>> {
+pub trait VmContext<Value: VmValue, V: Vm<Value>>: Verifiable {
     /// Adds a pending branch to the context, allowing outer caller to keep exploring new branches
     fn add_pending_branch(&mut self, vm: Rc<RefCell<V>>);
+    /// Tracks total instructions executed
+    fn increment_pc(&mut self);
 }
 
 /// A no-op context for interpreter
 #[derive(Default)]
 pub struct NoOpContext;
 
+impl Verifiable for NoOpContext {
+    fn is_valid(&self) -> bool {
+        true
+    }
+}
+
 impl<Value: VmValue, V: Vm<Value>> VmContext<Value, V> for NoOpContext {
     fn add_pending_branch(&mut self, _vm: Rc<RefCell<V>>) {}
+
+    fn increment_pc(&mut self) {}
 }
 
 /// A fork, representing a conditional jump
@@ -45,7 +55,10 @@ impl Fork {
     /// It is used when changing `if (a) { B } else { C }` into `if (!a) { C } else { B }`
     /// to save some coding.
     pub fn flip(&self) -> Fork {
-        Fork { target: self.fall_through, fall_through: self.target }
+        Fork {
+            target: self.fall_through,
+            fall_through: self.target,
+        }
     }
 }
 

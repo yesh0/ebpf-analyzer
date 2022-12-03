@@ -10,7 +10,7 @@ use crate::{
         context::BranchContext,
         vm::{Branch, BranchState, StaticHelpers},
     },
-    interpreter::{context::VmContext, run, vm::Vm},
+    interpreter::{context::VmContext, run, value::Verifiable, vm::Vm},
     spec::IllegalInstruction,
 };
 
@@ -22,6 +22,21 @@ pub struct AnalyzerConfig<'a> {
     ///
     /// Users may inject parameters here.
     pub setup: &'a dyn Fn(&mut BranchState),
+    /// Maximum processable instruction count
+    ///
+    /// The verifier goes through each possible branch, looking for invalid operations.
+    /// This setting limits total processed instruction, summing up all the processed branches.
+    pub processed_instruction_limit: usize,
+}
+
+impl<'a> Default for AnalyzerConfig<'a> {
+    fn default() -> Self {
+        Self {
+            helpers: Default::default(),
+            setup: &|_| {},
+            processed_instruction_limit: Default::default(),
+        }
+    }
 }
 
 /// The analyzer (or eBPF verifier)
@@ -38,6 +53,8 @@ pub enum VerificationError {
     IllegalGraph,
     /// Invalid operation
     IllegalStateChange(Branch),
+    /// Illegal context
+    IllegalContext(&'static str),
 }
 
 impl From<IllegalInstruction> for VerificationError {
@@ -95,6 +112,7 @@ impl Analyzer {
             Err(VerificationError::IllegalStructure(IllegalStructure::Empty))
         } else {
             let mut branches = BranchContext::new();
+            branches.set_instruction_limit(config.processed_instruction_limit);
             let mut branch = BranchState::new(config.helpers);
             (config.setup)(&mut branch);
             branches.add_pending_branch(Rc::new(RefCell::new(branch)));
@@ -104,6 +122,11 @@ impl Analyzer {
                 if !vm.is_valid() {
                     drop(vm);
                     return Err(VerificationError::IllegalStateChange(branch));
+                }
+                if !branches.is_valid() {
+                    return Err(VerificationError::IllegalContext(
+                        branches.invalid_message(),
+                    ));
                 }
             }
             Ok(())

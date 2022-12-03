@@ -42,6 +42,7 @@ impl VerifiableCall<CheckedValue, BranchState> for AsIsFunc {
 }
 
 const HELPERS: AnalyzerConfig = AnalyzerConfig {
+    processed_instruction_limit: 40_000_000,
     helpers: &[
         // (0) nop
         &StaticFunctionCall::new(
@@ -154,6 +155,12 @@ define_test!(
 
 define_test!(test_branching, "bpf-src/branching-loop.txt", Ok(_), {});
 define_test!(test_costly, "bpf-src/large-loop.txt", Ok(_), {});
+define_test!(
+    test_fail_costly,
+    "bpf-src/larger-loop.txt",
+    Err(VerificationError::IllegalContext(context)),
+    { std::println!("Captured: {}", context) }
+);
 
 define_test!(test_dyn_region, "bpf-src/dynamic-range.txt", Ok(_), {});
 define_test!(

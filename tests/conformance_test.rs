@@ -78,6 +78,7 @@ fn analyze_with_conformance_data(data: &ConformanceData) -> Result<(), ()> {
     match Analyzer::analyze(
         &data.code,
         &AnalyzerConfig {
+            processed_instruction_limit: 1000,
             helpers: HELPERS,
             setup: &|vm| {
                 let mut region = DynamicRegion::default();

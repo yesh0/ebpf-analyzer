@@ -43,16 +43,16 @@ fn validate_valid_blocks() {
         ),
         Err(err) => panic!("Err: {:?}", err),
     }
-    match Analyzer::analyze(&code, &AnalyzerConfig { helpers: &[], setup: &|_| {} }) {
-        Err(VerificationError::IllegalStateChange(_)) => {},
-        _ => panic!(),
-    }
+    assert!(matches!(
+        Analyzer::analyze(&code, &AnalyzerConfig::default()),
+        Err(VerificationError::IllegalContext(_))
+    ));
 }
 
 #[test]
 fn validate_unreachable_blocks() {
     let code = parse_llvm_dump(SIMPLE2);
-    match Analyzer::analyze(&code, &AnalyzerConfig { helpers: &[], setup: &|_| {} }) {
+    match Analyzer::analyze(&code, &AnalyzerConfig::default()) {
         Err(VerificationError::IllegalGraph) => {}
         _ => panic!("Should contain unreachable blocks"),
     }

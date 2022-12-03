@@ -8,3 +8,4 @@ Cargo.lock
 
 # Have yet to decide upon a project license
 tests/conformance
+tests/bpf_conformance

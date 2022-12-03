@@ -46,7 +46,9 @@ pub fn run<Value: VmValue, M: Vm<Value>, C: VmContext<Value, M>>(
     vm: &mut RefMut<M>,
     context: &mut C,
 ) {
-    while vm.is_valid() {
+    while vm.is_valid() && context.is_valid() {
+        context.increment_pc();
+
         let insn = Instruction::from_raw(code[*vm.pc()]);
         *vm.pc() += 1;
         let opcode = insn.opcode;
