@@ -1,7 +1,7 @@
 //! This file contains the [Vm] trait used by the interpreter
 //! as well as a VM implemtation [UncheckedVm] working as an interpreter.
 
-use core::{cell::UnsafeCell, num::Wrapping};
+use core::{cell::UnsafeCell, num::Wrapping, mem::swap};
 
 use alloc::vec::Vec;
 use ebpf_consts::{READABLE_REGISTER_COUNT, STACK_REGISTER, STACK_SIZE, WRITABLE_REGISTER_COUNT};
@@ -52,16 +52,28 @@ pub trait Vm<Value: VmValue>: Forker<Value, Self> {
     /// Calls a helper function
     fn call_helper(&mut self, helper: i32);
     /// Calls a inner function
-    fn call_relative(&mut self, offset: i16);
+    fn call_relative(&mut self, imm: i32);
     /// Returns from a function
     ///
     /// It returns `false` if the stack frame is empty and the interpreter should now stop.
     fn return_relative(&mut self) -> bool;
 }
 
+/// Saves the caller pc, callee saved registers and its stack
+#[derive(Clone)]
+pub struct CallerContext<Value: VmValue, Stack> {
+    /// The caller pc (pointing the instruction after the call)
+    pub pc: usize,
+    /// Callee saved registers (`r6, r7, r8, r9`)
+    pub registers: [Value; 4],
+    /// Stack
+    pub stack: Stack,
+}
+
 struct UncheckedInnerVm<Value: VmValue> {
     invalid: Option<&'static str>,
     pc: usize,
+    call_trace: Vec<CallerContext<Value, Vec<Value>>>,
     registers: [Value; READABLE_REGISTER_COUNT as usize],
     stack: Vec<Value>,
     helpers: HelperCollection,
@@ -158,12 +170,35 @@ impl Vm<Wrapping<u64>> for UncheckedVm<Wrapping<u64>> {
         }
     }
 
-    fn call_relative(&mut self, _offset: i16) {
-        todo!()
+    fn call_relative(&mut self, imm: i32) {
+        let inner = self.0.get_mut();
+        let mut new_stack: Vec<Value> = Vec::new();
+        new_stack.resize(STACK_SIZE / 8, Value::default());
+        swap(&mut new_stack, &mut inner.stack);
+        inner.call_trace.push(CallerContext { pc: inner.pc, registers: [
+            inner.registers[6],
+            inner.registers[7],
+            inner.registers[8],
+            inner.registers[9],
+        ], stack: new_stack });
+        inner.registers[10].0 = inner.stack.as_ptr() as u64 + STACK_SIZE as u64;
+
+        inner.pc = inner.pc.wrapping_add_signed(imm as isize);
     }
 
     fn return_relative(&mut self) -> bool {
-        false
+        let mut inner = self.0.get_mut();
+        if let Some(caller) = inner.call_trace.pop() {
+            inner.pc = caller.pc;
+            for i in 6..=9 {
+                inner.registers[i] = caller.registers[i - 6];
+            }
+            inner.stack = caller.stack;
+            inner.registers[10].0 = inner.stack.as_ptr() as u64 + STACK_SIZE as u64;
+            true
+        } else {
+            false
+        }
     }
 }
 
@@ -173,6 +208,7 @@ impl<Value: VmValue> UncheckedVm<Value> {
         let mut vm = UncheckedInnerVm {
             invalid: None,
             pc: 0,
+            call_trace: Vec::new(),
             registers: Default::default(),
             stack: Vec::new(),
             helpers,

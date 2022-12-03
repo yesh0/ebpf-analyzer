@@ -132,5 +132,5 @@ pub fn assert_biop(op: u8, dst_v: u64, src_v: u64, result: u64) {
     run(&code, &mut vm, &mut NoOpContext{});
     assert_eq!(vm.reg(dst as u8).0, result);
     assert!(!vm.is_valid());
-    assert_eq!(*vm.pc(), 1);
+    assert_eq!(*vm.pc(), 2);
 }

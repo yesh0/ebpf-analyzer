@@ -36,14 +36,7 @@ fn test_with_conformance_data(data: ConformanceData) -> Result<(), ()> {
             |_, _, _, _, _| 0,
         ]),
     )));
-    // TODO: implement function calls
-    let skips = ["call_local.data"];
-    if skips.iter().any(|f| data.name.contains(f)) {
-        stderr()
-            .write_fmt(format_args!(">>>>>>> Unsupported: {}\n", data.name))
-            .expect("stderr write error");
-        Ok(())
-    } else if data.error.is_empty() {
+    if data.error.is_empty() {
         println!("Testing {}", data.name);
         analyze_with_conformance_data(&data)?;
         v.borrow_mut().reg(0).0 = 0xCAFEu64;

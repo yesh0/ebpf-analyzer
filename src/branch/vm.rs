@@ -12,11 +12,14 @@ use alloc::{rc::Rc, vec::Vec};
 use ebpf_consts::{READABLE_REGISTER_COUNT, WRITABLE_REGISTER_COUNT};
 
 use crate::{
-    interpreter::{value::Verifiable, vm::Vm},
+    interpreter::{
+        value::Verifiable,
+        vm::{CallerContext, Vm},
+    },
     safe::{mut_borrow_items, safe_ref_unsafe_cell},
     spec::proto::VerifiableCall,
     track::{
-        pointees::{empty_region::EmptyRegion, stack_region::StackRegion, Pointee},
+        pointees::{empty_region::EmptyRegion, pointed, stack_region::StackRegion, Pointee},
         pointer::{Pointer, PointerAttributes},
         scalar::Scalar,
         TrackedValue,
@@ -46,10 +49,20 @@ struct InnerState {
     /// The value is only exposed when calling `two_regs` with two identical register index,
     /// and should always be valid.
     temp_reg: CheckedValue,
+    call_trace: Vec<CallerContext<CheckedValue, Pointee>>,
     stack: Pointee,
     regions: Vec<Pointee>,
     helpers: StaticHelpers,
     resources: ResourceTracker,
+}
+
+impl InnerState {
+    pub(super) fn gen_stack_pointer(&self) -> Pointer {
+        Pointer::new(
+            PointerAttributes::NON_NULL | PointerAttributes::READABLE | PointerAttributes::MUTABLE,
+            self.stack.clone(),
+        )
+    }
 }
 
 /// The state of the verifying machine at a certain point
@@ -76,18 +89,13 @@ impl BranchState {
             invalid: None,
             registers: Default::default(),
             temp_reg: Scalar::unknown().into(),
+            call_trace: Vec::new(),
             stack: Rc::new(RefCell::new(StackRegion::new())),
             resources: ResourceTracker::default(),
             regions: alloc::vec![EmptyRegion::instance()],
             helpers,
         };
-        let mut frame = Pointer::new(
-            PointerAttributes::NON_NULL
-                | PointerAttributes::ARITHMETIC
-                | PointerAttributes::READABLE
-                | PointerAttributes::MUTABLE,
-            state.stack.clone(),
-        );
+        let mut frame = state.gen_stack_pointer();
         frame += &Scalar::constant64(512);
         *state.registers[10].inner_mut() = Some(TrackedValue::Pointer(frame));
         let id = state.resources.external(&mut state.ids);
@@ -130,6 +138,16 @@ impl BranchState {
         inner.regions.push(region);
     }
 
+    /// Removes the region
+    fn remove_external_resource(&mut self, id: Id) {
+        let inner = self.inner_mut();
+        if inner.resources.invalidate_external(id) {
+            // TODO: Invalidate
+        } else {
+            self.invalidate("External resource");
+        }
+    }
+
     /// Adds the region and sets its id
     pub fn add_allocated_resource(&mut self, region: Pointee) {
         let inner = self.inner_mut();
@@ -159,6 +177,7 @@ impl BranchState {
             for region in &inner.regions {
                 region.borrow_mut().redirects(&redirector);
             }
+            // TODO: Consider invalidating pointers from call_trace
             // TODO: Maybe remove that region from self.inner().regions
         } else {
             self.invalidate("Deallocating unknown resource");
@@ -203,6 +222,7 @@ impl Clone for BranchState {
             invalid: None,
             registers: Default::default(),
             temp_reg: inner.temp_reg.clone(),
+            call_trace: inner.call_trace.clone(),
             stack: inner.stack.borrow().safe_clone(),
             resources: inner.resources.clone(),
             regions,
@@ -330,15 +350,46 @@ impl Vm<CheckedValue> for BranchState {
         }
     }
 
-    fn call_relative(&mut self, _offset: i16) {
-        todo!()
+    fn call_relative(&mut self, imm: i32) {
+        let inner = self.inner_mut();
+        inner.call_trace.push(CallerContext {
+            pc: inner.pc,
+            registers: [
+                inner.registers[6].clone(),
+                inner.registers[7].clone(),
+                inner.registers[8].clone(),
+                inner.registers[9].clone(),
+            ],
+            stack: inner.stack.clone(),
+        });
+        for i in 6..=9 {
+            inner.registers[i] = CheckedValue::default();
+        }
+        inner.pc = inner.pc.wrapping_add_signed(imm as isize);
+        let stack = pointed(StackRegion::new());
+        inner.stack = stack.clone();
+        inner.registers[10] = inner.gen_stack_pointer().into();
+        self.add_external_resource(stack);
     }
 
     fn return_relative(&mut self) -> bool {
-        if !self.inner().resources.is_empty() {
-            self.invalidate("Resource not cleaned up");
+        let id = self.inner().stack.borrow_mut().get_id();
+        self.remove_external_resource(id);
+        let inner = self.inner_mut();
+        if let Some(caller) = inner.call_trace.pop() {
+            inner.pc = caller.pc;
+            inner.stack = caller.stack.clone();
+            inner.registers[10] = inner.gen_stack_pointer().into();
+            for i in 6..=9 {
+                inner.registers[i] = caller.registers[i - 6].clone();
+            }
+            true
+        } else {
+            if !self.inner().resources.is_empty() {
+                self.invalidate("Resource not cleaned up");
+            }
+            false
         }
-        false
     }
 }
 

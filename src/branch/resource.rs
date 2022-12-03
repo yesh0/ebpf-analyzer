@@ -23,6 +23,17 @@ impl ResourceTracker {
         id
     }
 
+    /// Removes an external resource, returning `true` on success
+    pub fn invalidate_external(&mut self, id: Id) -> bool {
+        if let Some(index) = self.external.iter().position(|i| *i == id) {
+            // TODO: Decide if we should use `swap_remove`
+            self.external.remove(index);
+            true
+        } else {
+            false
+        }
+    }
+
     /// Allocates a resource
     pub fn allocate(&mut self, ids: &mut IdGen) -> Id {
         let id = ids.next_id();
@@ -30,9 +41,10 @@ impl ResourceTracker {
         id
     }
 
-    /// Deallocates a resource
+    /// Deallocates a resource, returning `true` on success
     pub fn deallocate(&mut self, id: Id) -> bool {
         if let Some(index) = self.resources.iter().position(|i| *i == id) {
+            // TODO: Decide if we should use `swap_remove`
             self.resources.remove(index);
             true
         } else {
@@ -96,4 +108,7 @@ fn test_res_tracker() {
     assert_eq!(tracker.external(&mut IdGen::default()), 1);
     assert!(tracker.is_empty());
     assert!(tracker.contains(1));
+    assert!(tracker.invalidate_external(1));
+    assert!(!tracker.contains(1));
+    assert!(!tracker.invalidate_external(1));
 }

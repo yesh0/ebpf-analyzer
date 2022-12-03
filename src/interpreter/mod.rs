@@ -46,10 +46,9 @@ pub fn run<Value: VmValue, M: Vm<Value>, C: VmContext<Value, M>>(
     vm: &mut RefMut<M>,
     context: &mut C,
 ) {
-    let mut pc = *vm.pc();
     while vm.is_valid() {
-        let insn = Instruction::from_raw(code[pc]);
-        pc += 1;
+        let insn = Instruction::from_raw(code[*vm.pc()]);
+        *vm.pc() += 1;
         let opcode = insn.opcode;
         opcode_match! {
             opcode,
@@ -209,6 +208,7 @@ pub fn run<Value: VmValue, M: Vm<Value>, C: VmContext<Value, M>>(
                 BPF_JSET: jset,
              ]
             ] => {
+                let pc = *vm.pc();
                 #?((JMP32))
                     let width = 32;
                 ##
@@ -243,25 +243,24 @@ pub fn run<Value: VmValue, M: Vm<Value>, C: VmContext<Value, M>>(
                     fork,
                     width
                 );
-                pc = *vm_bak.pc();
+                *vm.pc() = *vm_bak.pc();
                 if let Some(branch) = result {
                     context.add_pending_branch(branch);
                 }
             }
             // BPF_JA: Unconditional jump
             [[BPF_JMP: JMP], [BPF_JA: JA]] => {
-                pc = pc.wrapping_add_signed(insn.off as isize);
+                *vm.pc() = vm.pc().wrapping_add_signed(insn.off as isize);
             }
             // BPF_EXIT: Exits
             [[BPF_JMP: JMP], [BPF_EXIT: EXIT]] => {
                 if vm.return_relative() {
-                    pc = *vm.pc();
+                    *vm.pc() = *vm.pc();
                 } else {
                     return;
                 }
             }
             [[BPF_JMP: JMP], [BPF_CALL: CALL]] => {
-                *vm.pc() = pc;
                 run_call(insn, vm);
             }
             // Store / load
@@ -307,10 +306,10 @@ pub fn run<Value: VmValue, M: Vm<Value>, C: VmContext<Value, M>>(
             }
             [[BPF_LD: LD], [BPF_IMM: IMM], [BPF_DW: DW]] => {
                 // TODO: Support relocation
-                let value = insn.imm as u32 as u64 | (code[pc] & 0xFFFF_FFFF_0000_0000);
+                let value = insn.imm as u32 as u64 | (code[*vm.pc()] & 0xFFFF_FFFF_0000_0000);
                 *vm.reg(insn.dst_reg()) = Value::constant64(value);
                 vm.update_reg(insn.dst_reg());
-                pc += 1;
+                *vm.pc() += 1;
             }
             #[cfg(feature = "atomic32")]
             [[BPF_STX: STX], [BPF_ATOMIC: ATOMIC], [BPF_W: W]] => {
@@ -325,14 +324,13 @@ pub fn run<Value: VmValue, M: Vm<Value>, C: VmContext<Value, M>>(
                 break;
             }
         };
-        *vm.pc() = pc;
     }
 }
 
 fn run_call<Value: VmValue, M: Vm<Value>>(insn: Instruction, vm: &mut RefMut<M>) {
     match insn.src_reg() {
         BPF_CALL_HELPER => vm.call_helper(insn.imm),
-        BPF_CALL_PSEUDO => vm.call_relative(insn.off),
+        BPF_CALL_PSEUDO => vm.call_relative(insn.imm),
         BPF_CALL_KFUNC => vm.invalidate("Unsupported BPF_CALL"),
         _ => vm.invalidate("Invalid BPF_CALL"),
     }

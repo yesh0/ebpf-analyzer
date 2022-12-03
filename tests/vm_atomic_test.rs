@@ -80,7 +80,7 @@ pub fn assert_atomic(imm: i32, r0: u64, src_v: u64, target: u64, expected: u64, 
     let code = [c, 0];
     run(&code, &mut vm, &mut NoOpContext{});
     assert!(!vm.is_valid());
-    assert_eq!(*vm.pc(), 1);
+    assert_eq!(*vm.pc(), 2);
 
     let v = unsafe { *((vm.ro_reg(STACK_REGISTER).0 - 8) as *mut u64) };
     assert_eq!(v, expected);

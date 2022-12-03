@@ -91,7 +91,7 @@ impl Analyzer {
         blocks: &FunctionBlocks,
         config: &AnalyzerConfig,
     ) -> Result<(), VerificationError> {
-        if blocks.len() != 1 {
+        if blocks.is_empty() {
             Err(VerificationError::IllegalStructure(IllegalStructure::Empty))
         } else {
             let mut branches = BranchContext::new();

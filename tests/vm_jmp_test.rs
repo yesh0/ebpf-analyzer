@@ -81,6 +81,6 @@ pub fn assert_jumps(op: u8, dst_v: u64, src_v: u64, jumps: bool) {
     assert_eq!(vm.reg(0).0, if jumps { 0 } else { NUMBER });
     if op != BPF_JMP | BPF_EXIT {
         assert!(!vm.is_valid());
-        assert_eq!(*vm.pc(), 2);
+        assert_eq!(*vm.pc(), 3);
     }
 }

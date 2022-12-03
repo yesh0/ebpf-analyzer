@@ -57,7 +57,7 @@ pub fn test_imm64() {
     ];
     run(&code, &mut vm, &mut NoOpContext{});
     assert_eq!(vm.reg(0).0, 0xCAFE_BABE_DEAD_BEEF_u64);
-    assert_eq!(*vm.pc(), 2);
+    assert_eq!(*vm.pc(), 3);
 }
 
 pub fn assert_store_load(op: u8, value: u64, result: u64) {
@@ -84,7 +84,7 @@ pub fn assert_store_load(op: u8, value: u64, result: u64) {
     let code = [c, 0];
     run(&code, &mut vm, &mut NoOpContext{});
     assert!(!vm.is_valid());
-    assert_eq!(*vm.pc(), 1);
+    assert_eq!(*vm.pc(), 2);
     if op & BPF_OPCODE_CLASS_MASK == BPF_LDX {
         assert_eq!(vm.reg(src as u8).0, result);
     } else {
