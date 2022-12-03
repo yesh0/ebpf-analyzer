@@ -18,7 +18,7 @@ fn validate_valid_code() {
             ParsedInstruction::Instruction(i) => {
                 assert!(!i.is_wide(), "Wide instruction mismatched");
                 if let Err(err) = i.validate() {
-                    panic!("Invalid code[{}]: {:?}: {:?}", pc, err, i);
+                    panic!("Invalid code[{pc}]: {err:?}: {i:?}");
                 }
                 pc += 1;
             }
@@ -41,7 +41,7 @@ fn validate_valid_blocks() {
             "Block count does not match: {}",
             blocks[0].block_count()
         ),
-        Err(err) => panic!("Err: {:?}", err),
+        Err(err) => panic!("Err: {err:?}"),
     }
     assert!(matches!(
         Analyzer::analyze(&code, &AnalyzerConfig::default()),

@@ -43,7 +43,7 @@ fn test_with_conformance_data(data: ConformanceData) -> Result<(), ()> {
             assert!(result.is_err());
             return Ok(());
         } else {
-            assert!(result.is_ok(), "{:?}", result);
+            assert!(result.is_ok(), "{result:?}");
         }
         v.borrow_mut().reg(0).0 = 0xCAFEu64;
         v.borrow_mut().reg(1).0 = data.memory.as_ptr() as u64;

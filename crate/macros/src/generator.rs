@@ -117,19 +117,19 @@ fn construct_code(
             }
             Replacing::WithString(i) => {
                 if aliases.len() <= *i {
-                    panic!("#{} out of range!", i);
+                    panic!("#{i} out of range!");
                 }
                 let symbol = &aliases[*i];
                 output.extend(Literal::string(symbol.as_str()).to_token_stream());
             }
             Replacing::WithRaw(i) => {
                 if aliases.len() <= *i {
-                    panic!("#{} out of range!", i);
+                    panic!("#{i} out of range!");
                 }
                 let symbol = &aliases[*i];
                 match TokenStream2::from_str(symbol) {
                     Ok(tokens) => output.extend(tokens),
-                    Err(err) => panic!("{:?}", err),
+                    Err(err) => panic!("{err:?}"),
                 }
             }
             Replacing::Nested(conditions, code) => {

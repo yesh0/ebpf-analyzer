@@ -10,7 +10,7 @@ pub fn match_test() {
 }
 
 pub fn match_number(opcode: u8) -> u64 {
-    println!("{:#x}", opcode);
+    println!("{opcode:#x}");
     opcode_match! {
         opcode,
         [[BPF_ALU: ALU, BPF_ALU64: ALU64], [BPF_X: X, BPF_K: K],
@@ -36,7 +36,7 @@ pub fn match_number(opcode: u8) -> u64 {
             ##
             let res = dst #=2 src;
             let s = #2;
-            println!("Expr: {:#x} {} {:#x}", dst, s, src);
+            println!("Expr: {dst:#x} {s} {src:#x}");
             res #?((ALU)) as u64 ##
         }
         _ => {

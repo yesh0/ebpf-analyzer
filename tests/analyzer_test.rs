@@ -24,7 +24,7 @@ impl VerifiableCall<CheckedValue, BranchState> for AssertFunc {
         match vm.ro_reg(1).inner() {
             Some(TrackedValue::Scalar(s)) => {
                 if s.contains(0) {
-                    panic!("{:?}", s)
+                    panic!("{s:?}")
                 }
             }
             _ => panic!("{:?}", vm.ro_reg(1)),
@@ -150,7 +150,7 @@ define_test!(
     test_not_ok_loop,
     "bpf-src/loop-not-ok.txt",
     Err(VerificationError::IllegalStateChange(branch)),
-    { std::println!("Captured: {:?}", branch) }
+    { std::println!("Captured: {branch:?}") }
 );
 
 define_test!(test_branching, "bpf-src/branching-loop.txt", Ok(_), {});
@@ -159,7 +159,7 @@ define_test!(
     test_fail_costly,
     "bpf-src/larger-loop.txt",
     Err(VerificationError::IllegalContext(context)),
-    { std::println!("Captured: {}", context) }
+    { std::println!("Captured: {context}") }
 );
 
 define_test!(test_dyn_region, "bpf-src/dynamic-range.txt", Ok(_), {});
@@ -167,7 +167,7 @@ define_test!(
     test_dyn_region_fail,
     "bpf-src/dynamic-fail.txt",
     Err(VerificationError::IllegalStateChange(branch)),
-    { std::println!("Captured: {:?}", branch) }
+    { std::println!("Captured: {branch:?}") }
 );
 
 define_test!(test_resource_ok, "bpf-src/resource-ok.txt", Ok(_), {});
@@ -175,7 +175,7 @@ define_test!(
     test_resource_fail,
     "bpf-src/resource-fail.txt",
     Err(VerificationError::IllegalStateChange(branch)),
-    { std::println!("Captured: {:?}", branch) }
+    { std::println!("Captured: {branch:?}") }
 );
 
 define_test!(test_printk, "bpf-src/printk.txt", Ok(_), {});
@@ -183,5 +183,5 @@ define_test!(
     test_printk_fail,
     "bpf-src/printk-fail.txt",
     Err(VerificationError::IllegalStateChange(branch)),
-    { std::println!("Captured: {:?}", branch) }
+    { std::println!("Captured: {branch:?}") }
 );

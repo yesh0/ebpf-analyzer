@@ -437,8 +437,8 @@ impl Clone for CheckedValue {
 impl Debug for CheckedValue {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self.inner() {
-            Some(TrackedValue::Pointer(p)) => f.write_fmt(format_args!("{:?}", p)),
-            Some(TrackedValue::Scalar(s)) => f.write_fmt(format_args!("{:?}", s)),
+            Some(TrackedValue::Pointer(p)) => f.write_fmt(format_args!("{p:?}")),
+            Some(TrackedValue::Scalar(s)) => f.write_fmt(format_args!("{s:?}")),
             None => f.write_str("_"),
         }
     }
