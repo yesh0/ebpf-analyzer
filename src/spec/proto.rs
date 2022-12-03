@@ -7,7 +7,7 @@ use crate::{
     interpreter::{value::VmValue, vm::Vm},
     track::{
         pointees::{pointed, simple_resource::SimpleResource, AnyType},
-        pointer::{Pointer, PointerAttributes},
+        pointer::Pointer,
         scalar::Scalar,
         TrackError, TrackedValue,
     },
@@ -148,24 +148,12 @@ impl VerifiableCall<CheckedValue, BranchState> for StaticFunctionCall {
             ReturnType::AllocatedResource(type_id) => {
                 let resource = pointed(SimpleResource::new(type_id));
                 vm.add_allocated_resource(resource.clone());
-                Ok(Pointer::new(
-                    PointerAttributes::NON_NULL
-                        | PointerAttributes::READABLE
-                        | PointerAttributes::MUTABLE,
-                    resource,
-                )
-                .into())
+                Ok(Pointer::nrw(resource).into())
             }
             ReturnType::ExternalResource(type_id) => {
                 let resource = pointed(SimpleResource::new(type_id));
                 vm.add_external_resource(resource.clone());
-                Ok(Pointer::new(
-                    PointerAttributes::NON_NULL
-                        | PointerAttributes::READABLE
-                        | PointerAttributes::MUTABLE,
-                    resource,
-                )
-                .into())
+                Ok(Pointer::nrw(resource).into())
             }
         }
     }

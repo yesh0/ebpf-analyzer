@@ -20,7 +20,7 @@ use crate::{
     spec::proto::VerifiableCall,
     track::{
         pointees::{empty_region::EmptyRegion, pointed, stack_region::StackRegion, Pointee},
-        pointer::{Pointer, PointerAttributes},
+        pointer::Pointer,
         scalar::Scalar,
         TrackedValue,
     },
@@ -58,10 +58,7 @@ struct InnerState {
 
 impl InnerState {
     pub(super) fn gen_stack_pointer(&self) -> Pointer {
-        Pointer::new(
-            PointerAttributes::NON_NULL | PointerAttributes::READABLE | PointerAttributes::MUTABLE,
-            self.stack.clone(),
-        )
+        Pointer::nrw(self.stack.clone())
     }
 }
 

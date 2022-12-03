@@ -46,6 +46,24 @@ pub struct Pointer {
 }
 
 impl Pointer {
+    /// Creates a non-null, readable, mutable pointer
+    pub fn nrw(pointee: Pointee) -> Pointer {
+        Self::new(
+            PointerAttributes::NON_NULL | PointerAttributes::READABLE | PointerAttributes::MUTABLE,
+            pointee,
+        )
+    }
+
+    /// Creates a non-null, end-marking pointer
+    pub fn end(pointee: Pointee) -> Pointer {
+        Self::new(
+            PointerAttributes::NON_NULL | PointerAttributes::DATA_END,
+            pointee,
+        )
+    }
+}
+
+impl Pointer {
     /// Returns `true` if the pointer is never null
     pub fn non_null(&self) -> bool {
         self.attributes.contains(PointerAttributes::NON_NULL)

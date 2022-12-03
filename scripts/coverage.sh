@@ -1,16 +1,32 @@
 #!/bin/sh
 
-mkdir -p target/profile
+PROF_DIR="target/profile"
+COVERAGE_DIR="target/coverage"
+mkdir -p "$COVERAGE_DIR"
+mkdir -p "$PROF_DIR"
 
 echo "=== Incremental testing ==="
 
-CARGO_INCREMENTAL=0                                          \
-RUSTFLAGS='-Cinstrument-coverage'                            \
-LLVM_PROFILE_FILE='target/profile/cargo-test-%p-%m.profraw'  \
+RUSTFLAGS="-Zprofile             \
+           -Ccodegen-units=1     \
+           -Cinline-threshold=0  \
+           -Clink-dead-code      \
+           -Coverflow-checks=off \
+           -Cinstrument-coverage"
+
+CARGO_INCREMENTAL=0                                     \
+RUSTFLAGS="$RUSTFLAGS"                                  \
+LLVM_PROFILE_FILE="$PROF_DIR/cargo-test-%p-%m.profraw"  \
 cargo test --workspace
 
 echo "=== Generating report ==="
 
-grcov . --binary-path ./target/debug/deps/ -s . -t lcov      \
---branch --ignore-not-existing --ignore '../*' --ignore "/*" \
+grcov . --binary-path ./target/debug/ -s . -t lcov            \
+--branch --ignore-not-existing --ignore '../*' --ignore "/*"  \
 -o target/coverage/tests.lcov
+
+echo "=== Generating HTML ==="
+
+grcov . --binary-path ./target/debug/ -s . -t html            \
+--branch --ignore-not-existing --ignore '../*' --ignore "/*"  \
+-o target/coverage/
