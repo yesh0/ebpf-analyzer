@@ -23,6 +23,11 @@ pub struct DynamicRegion {
 }
 
 impl DynamicRegion {
+    /// Creates a region with fixed size (in bytes)
+    pub fn new(size: usize) -> Self {
+        Self { id: 0, limit: size, upper_limit: size }
+    }
+
     /// Sets the size limit of this region
     pub fn set_limit(&mut self, limit: &Scalar) {
         self.limit = self.limit.max(match limit.value64() {

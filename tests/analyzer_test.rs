@@ -113,10 +113,7 @@ const HELPERS: AnalyzerConfig = AnalyzerConfig {
                 | PointerAttributes::READABLE,
             region.clone(),
         );
-        let end = Pointer::new(
-            PointerAttributes::NON_NULL | PointerAttributes::DATA_END,
-            region,
-        );
+        let end = Pointer::end(region);
         let context = Rc::new(RefCell::new(StructRegion::new(
             vec![pointer, end],
             &[1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2],

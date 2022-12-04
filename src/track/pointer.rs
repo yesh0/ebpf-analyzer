@@ -185,10 +185,10 @@ impl SubAssign<&Scalar> for Pointer {
     }
 }
 
-impl Sub<&Self> for &Pointer {
+impl Sub<Self> for &Pointer {
     type Output = Option<Scalar>;
 
-    fn sub(self, rhs: &Self) -> Self::Output {
+    fn sub(self, rhs: Self) -> Self::Output {
         if self.non_null()
             && self.is_arithmetic()
             && rhs.non_null()

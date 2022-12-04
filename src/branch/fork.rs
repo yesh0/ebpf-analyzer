@@ -67,6 +67,7 @@ impl BranchState {
         fork: &Fork,
     ) -> Result<Option<Branch>, ()> {
         if p2.is_end_pointer()
+            && p2.non_null()
             && !p1.is_end_pointer()
             && p1.non_null()
             && p1.is_pointing_to(p2.get_pointing_to())
