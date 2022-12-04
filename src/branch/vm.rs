@@ -58,7 +58,7 @@ struct InnerState {
 
 impl InnerState {
     pub(super) fn gen_stack_pointer(&self) -> Pointer {
-        Pointer::nrw(self.stack.clone())
+        Pointer::nrwa(self.stack.clone())
     }
 }
 

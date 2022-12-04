@@ -54,6 +54,17 @@ impl Pointer {
         )
     }
 
+    /// Creates a non-null, readable, mutable pointer that allows arithmetic operations
+    pub fn nrwa(pointee: Pointee) -> Pointer {
+        Self::new(
+            PointerAttributes::NON_NULL
+                | PointerAttributes::READABLE
+                | PointerAttributes::MUTABLE
+                | PointerAttributes::ARITHMETIC,
+            pointee,
+        )
+    }
+
     /// Creates a non-null, end-marking pointer
     pub fn end(pointee: Pointee) -> Pointer {
         Self::new(
