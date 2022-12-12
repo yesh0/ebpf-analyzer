@@ -336,3 +336,29 @@ pub mod helpers {
         BPF_HELPER_GET_CURRENT_COMM,
     ];
 }
+
+#[test]
+fn test_invalid_call() {
+    use ebpf_consts::*;
+    let invalid: &[u64] = &[0, 9, 10, 11, 12, 13];
+    let zero_arg: &[u64] = &[5, 7, 8, 14, 15];
+    for i in 0..helpers::HELPERS.len() {
+        let result = crate::analyzer::Analyzer::analyze(&[
+            BPF_JMP_CALL as u64 | ((i as u64) << 32),
+            (BPF_ALU | BPF_MOV | BPF_K) as u64,
+            BPF_JMP_EXIT as u64,
+        ], &crate::analyzer::AnalyzerConfig {
+            helpers: helpers::HELPERS,
+            setup: &|_| {},
+            processed_instruction_limit: 10,
+            map_fd_collector: &|_| None,
+        });
+        if invalid.contains(&(i as u64)) {
+            assert!(matches!(result, Err(crate::analyzer::VerificationError::IllegalStateChange(_))));
+        } else if zero_arg.contains(&(i as u64)) {
+            assert!(result.is_ok(), "{i}");
+        } else {
+            assert!(matches!(result, Err(crate::analyzer::VerificationError::IllegalStateChange(_))));
+        }
+    }
+}

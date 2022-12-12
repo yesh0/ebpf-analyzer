@@ -44,7 +44,7 @@ impl<'a> Default for AnalyzerConfig<'a> {
         Self {
             helpers: Default::default(),
             setup: &|_| {},
-            processed_instruction_limit: Default::default(),
+            processed_instruction_limit: 1_000_000,
             map_fd_collector: &|_| None,
         }
     }
@@ -142,7 +142,7 @@ impl Analyzer {
             while let Some(branch) = branches.next() {
                 let mut vm = branch.borrow_mut();
                 run(code, &mut vm, &mut branches);
-                if !vm.is_valid() {
+                if !vm.is_valid() || !vm.ro_reg(0).is_valid() {
                     drop(vm);
                     return Err(VerificationError::IllegalStateChange(branch));
                 }

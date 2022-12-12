@@ -45,7 +45,8 @@ fn validate_valid_blocks() {
     }
     assert!(matches!(
         Analyzer::analyze(&code, &AnalyzerConfig::default()),
-        Err(VerificationError::IllegalContext(_))
+        // Passes block checks, failing simulation
+        Err(VerificationError::IllegalStateChange(_))
     ));
 }
 

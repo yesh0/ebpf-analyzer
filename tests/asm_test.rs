@@ -110,7 +110,11 @@ fn test_pointers() {
     // reading nullable
     test_pointer_checks("ldxdw r0, [r1+0]\nexit", false, 1);
     // reading readable
-    test_pointer_checks("jeq r1, 0, exit\nldxdw r0, [r1+0]\nexit", true, 0xff);
+    test_pointer_checks(
+        "mov r0, 0\njeq r1, 0, exit\nldxdw r0, [r1+0]\nexit",
+        true,
+        0xff,
+    );
     // reading unreadable
     test_pointer_checks("jeq r2, 0, exit\nldxdw r0, [r2+0]\nexit", false, 2);
 
@@ -135,15 +139,15 @@ fn test_pointers() {
     test_pointer_checks("add r3, 1\nexit", false, 1);
     test_pointer_checks("jeq r2, 0, exit\nadd r2, 1\nexit", false, 2);
     // arithmetic allowed
-    test_pointer_checks("jeq r3, 0, exit\nadd r3, 1\nexit", true, 0xff);
-    test_pointer_checks("jeq r3, 0, exit\nsub r3, 1\nexit", true, 0xff);
+    test_pointer_checks("mov r0, 0\njeq r3, 0, exit\nadd r3, 1\nexit", true, 0xff);
+    test_pointer_checks("mov r0, 0\njeq r3, 0, exit\nsub r3, 1\nexit", true, 0xff);
     // others not allowed
     test_pointer_checks("jeq r3, 0, exit\nmul r3, 2\nexit", false, 2);
     test_pointer_checks("jeq r3, 0, exit\nlsh r3, 2\nexit", false, 2);
     // subtracting
     test_pointer_checks("jeq r3, 0, exit\nsub r3, r1\nexit", false, 2);
     test_pointer_checks(
-        "jeq r3, 0, exit\njeq r1, 0, exit\nsub r3, r1\nexit",
+        "mov r0, 0\njeq r3, 0, exit\njeq r1, 0, exit\nsub r3, r1\nexit",
         true,
         0xff,
     );
@@ -154,7 +158,7 @@ fn test_pointers() {
     test_pointer_checks("jeq r4, 0, exit\njlt r1, r4, exit\nexit", false, 2);
     test_pointer_checks("jeq r1, 0, exit\njlt r1, r4, exit\nexit", false, 2);
     test_pointer_checks(
-        "jeq r1, 0, exit\njeq r4, 0, exit\njlt r1, r4, exit\nexit",
+        "mov r0, 0\njeq r1, 0, exit\njeq r4, 0, exit\njlt r1, r4, exit\nexit",
         true,
         0xff,
     );
@@ -173,8 +177,24 @@ fn test_pointers() {
         false,
         5,
     );
-    test_pointer_checks("mov r1, r6\njeq r1, 0, exit\ncall 1\nexit", true, 0xff);
-    test_pointer_checks("mov r1, r6\njeq r1, 0, exit\nadd r1, 4\ncall 1\nexit", true, 0xff);
-    test_pointer_checks("mov r1, r6\njeq r1, 0, exit\nadd r1, 6\ncall 1\nexit", false, 4);
-    test_pointer_checks("mov r1, r6\njeq r1, 0, exit\nadd r1, 8\ncall 1\nexit", false, 4);
+    test_pointer_checks(
+        "mov r0, 0\nmov r1, r6\njeq r1, 0, exit\ncall 1\nmov r0, 0\nexit",
+        true,
+        0xff,
+    );
+    test_pointer_checks(
+        "mov r0, 0\nmov r1, r6\njeq r1, 0, exit\nadd r1, 4\ncall 1\nmov r0, 0\nexit",
+        true,
+        0xff,
+    );
+    test_pointer_checks(
+        "mov r1, r6\njeq r1, 0, exit\nadd r1, 6\ncall 1\nexit",
+        false,
+        4,
+    );
+    test_pointer_checks(
+        "mov r1, r6\njeq r1, 0, exit\nadd r1, 8\ncall 1\nexit",
+        false,
+        4,
+    );
 }
