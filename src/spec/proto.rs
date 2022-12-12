@@ -28,6 +28,8 @@ pub enum IllegalFunctionCall {
     IllegalPointer(TrackError),
     /// Illegal resource (deallocated, for example)
     IllegalResource,
+    /// Rejected, either not implemented or not allowed
+    Rejected,
 }
 
 /// Function prototype information
@@ -103,6 +105,20 @@ impl StaticFunctionCall {
                 ArgumentType::Any,
             ],
             returns: ReturnType::None,
+        }
+    }
+
+    /// Returns a function `() -> scalar`
+    pub const fn scalar_getter() -> StaticFunctionCall {
+        StaticFunctionCall {
+            arguments: [
+                ArgumentType::Any,
+                ArgumentType::Any,
+                ArgumentType::Any,
+                ArgumentType::Any,
+                ArgumentType::Any,
+            ],
+            returns: ReturnType::Scalar,
         }
     }
 }
@@ -217,4 +233,106 @@ fn test_arg_check() {
             Some(&Scalar::constant64(1024).into())
         )
         .is_err());
+}
+
+/// The module defines some commonly used helper function prototypes.
+pub mod helpers {
+    use crate::track::pointees::map_resource::{MapDeleteCall, MapLookupCall, MapUpdateCall};
+
+    use super::*;
+
+    /// An invalid helper
+    pub struct InvalidCall;
+
+    impl VerifiableCall<CheckedValue, BranchState> for InvalidCall {
+        fn call(&self, _vm: &mut BranchState) -> Result<CheckedValue, IllegalFunctionCall> {
+            Err(IllegalFunctionCall::Rejected)
+        }
+    }
+
+    /// A helper function that accepts [ArgumentType::Any] and returns [ReturnType::None]
+    pub const BPF_HELPER_NOP: &StaticFunctionCall = &StaticFunctionCall::nop();
+
+    /// An invalid helper [InvalidCall]
+    pub const BPF_HELPER_INVALID: &InvalidCall = &InvalidCall {};
+
+    /// A helper function `(writable pointer, read size, unsafe pointer) -> error code`
+    pub const BPF_HELPER_PROBE_READ: &StaticFunctionCall = &StaticFunctionCall::new(
+        [
+            ArgumentType::DynamicMemory(2),
+            ArgumentType::Scalar,
+            ArgumentType::Some,
+            ArgumentType::Any,
+            ArgumentType::Any,
+        ],
+        ReturnType::Scalar,
+    );
+
+    /// A helper function `() -> scalar`
+    pub const BPF_HELPER_GET_SCALAR: &StaticFunctionCall = &StaticFunctionCall::scalar_getter();
+
+    /// A helper function [BPF_HELPER_GET_SCALAR]
+    pub const BPF_HELPER_KTIME_GET_NS: &StaticFunctionCall = BPF_HELPER_GET_SCALAR;
+
+    /// A helper function [BPF_HELPER_GET_SCALAR]
+    pub const BPF_HELPER_GET_PRANDOM_U32: &StaticFunctionCall = BPF_HELPER_GET_SCALAR;
+
+    /// A helper function [BPF_HELPER_GET_SCALAR]
+    pub const BPF_HELPER_GET_SMP_PROCESSOR_ID: &StaticFunctionCall = BPF_HELPER_GET_SCALAR;
+
+    /// A helper function [BPF_HELPER_GET_SCALAR]
+    pub const BPF_HELPER_GET_CURRENT_PID_TGID: &StaticFunctionCall = BPF_HELPER_GET_SCALAR;
+
+    /// A helper function [BPF_HELPER_GET_SCALAR]
+    pub const BPF_HELPER_GET_CURRENT_UID_GID: &StaticFunctionCall = BPF_HELPER_GET_SCALAR;
+
+    /// A helper function `(writable pointer, read size, ...) -> error code`
+    pub const BPF_HELPER_DYN2: &StaticFunctionCall = &StaticFunctionCall::new(
+        [
+            ArgumentType::DynamicMemory(2),
+            ArgumentType::Scalar,
+            ArgumentType::Any,
+            ArgumentType::Any,
+            ArgumentType::Any,
+        ],
+        ReturnType::Scalar,
+    );
+
+    /// A helper function [BPF_HELPER_DYN2]
+    pub const BPF_HELPER_TRACE_PRINTK: &StaticFunctionCall = BPF_HELPER_DYN2;
+
+    /// A helper function [BPF_HELPER_DYN2]
+    pub const BPF_HELPER_GET_CURRENT_COMM: &StaticFunctionCall = BPF_HELPER_DYN2;
+
+    /// The `bpf_map_lookup_elem` helper function
+    pub const BPF_HELPER_MAP_LOOKUP_ELEM: &MapLookupCall = &MapLookupCall {};
+
+    /// The `bpf_map_update_elem` helper function
+    pub const BPF_HELPER_MAP_UPDATE_ELEM: &MapUpdateCall = &MapUpdateCall {};
+
+    /// The `bpf_map_delete_elem` helper function
+    pub const BPF_HELPER_MAP_DELETE_ELEM: &MapDeleteCall = &MapDeleteCall {};
+
+    /// A typical helper collection for [crate::analyzer::Analyzer]
+    pub const HELPERS: &[&dyn VerifiableCall<CheckedValue, BranchState>; 17] = &[
+        BPF_HELPER_INVALID,
+        BPF_HELPER_MAP_LOOKUP_ELEM,
+        BPF_HELPER_MAP_UPDATE_ELEM,
+        BPF_HELPER_MAP_DELETE_ELEM,
+        BPF_HELPER_PROBE_READ,
+        BPF_HELPER_KTIME_GET_NS,
+        BPF_HELPER_TRACE_PRINTK,
+        BPF_HELPER_GET_PRANDOM_U32,
+        BPF_HELPER_GET_SMP_PROCESSOR_ID,
+        // TODO: Support skb
+        BPF_HELPER_INVALID,
+        BPF_HELPER_INVALID,
+        BPF_HELPER_INVALID,
+        // TODO: Support tail call
+        BPF_HELPER_INVALID,
+        BPF_HELPER_INVALID,
+        BPF_HELPER_GET_CURRENT_PID_TGID,
+        BPF_HELPER_GET_CURRENT_UID_GID,
+        BPF_HELPER_GET_CURRENT_COMM,
+    ];
 }

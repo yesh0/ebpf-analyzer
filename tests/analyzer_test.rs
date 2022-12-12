@@ -1,7 +1,7 @@
 use std::{cell::RefCell, rc::Rc};
 
 use ebpf_analyzer::{
-    analyzer::{Analyzer, AnalyzerConfig, VerificationError, MapInfo},
+    analyzer::{Analyzer, AnalyzerConfig, MapInfo, VerificationError},
     branch::{checked_value::CheckedValue, vm::BranchState},
     interpreter::vm::Vm,
     spec::proto::{
@@ -125,19 +125,18 @@ const HELPERS: AnalyzerConfig = AnalyzerConfig {
         )
         .into();
     },
-    map_fd_collector: &|fd| if fd == 1024 {
-        Some(MapInfo{ key_size: 8, value_size: 16 })
-    } else {
-        None
-    },
+    map_fd_collector: &|_| None,
 };
 
 macro_rules! define_test {
     ($name:ident, $file:expr, $result:pat, $dump:block) => {
+        define_test!($name, $file, $result, $dump, HELPERS);
+    };
+    ($name:ident, $file:expr, $result:pat, $dump:block, $helpers:expr) => {
         #[test]
         fn $name() {
             let code = parse_llvm_dump(include_str!($file));
-            match Analyzer::analyze(&code, &HELPERS) {
+            match Analyzer::analyze(&code, &$helpers) {
                 $result => $dump
                 Err(err) => panic!("Err: {:?}", err),
                 #[allow(unreachable_patterns)]
@@ -186,4 +185,28 @@ define_test!(
     "bpf-src/printk-fail.txt",
     Err(VerificationError::IllegalStateChange(branch)),
     { std::println!("Captured: {branch:?}") }
+);
+
+const MAP_HELPERS: &AnalyzerConfig = &AnalyzerConfig {
+    helpers: ebpf_analyzer::spec::proto::helpers::HELPERS,
+    setup: &|_| {},
+    processed_instruction_limit: 4_000,
+    map_fd_collector: &|fd| {
+        if (fd >> 16) == 0 {
+            Some(MapInfo {
+                key_size: (fd as u32 >> 8) & 0xff,
+                value_size: fd as u32 & 0xff,
+            })
+        } else {
+            None
+        }
+    },
+};
+
+define_test!(
+    test_map_helpers,
+    "bpf-src/map-test.txt",
+    Ok(_),
+    {},
+    MAP_HELPERS
 );

@@ -142,7 +142,7 @@ impl VerifiableCall<CheckedValue, BranchState> for MapLookupCall {
                 ArgumentType::Any,
                 ArgumentType::Any,
             ],
-            ReturnType::ExternalResource(MAP_TYPE_ID),
+            ReturnType::None,
         )
         .call(vm)
         .map(|_| value.into())
