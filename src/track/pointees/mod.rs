@@ -15,9 +15,13 @@ pub mod struct_region;
 pub mod empty_region;
 pub mod dyn_region;
 pub mod simple_resource;
+pub mod map_resource;
 
 /// Type id for user-defined types
-pub type AnyType = u32;
+///
+/// Negative ids or a zero one are reserved for internal types.
+/// For users of this library, please use a positive id.
+pub type AnyType = i32;
 
 /// How we get a concrete reference from `dyn` references
 pub enum InnerRegion<'a> {
@@ -49,6 +53,17 @@ pub trait MemoryRegion: SafeClone + Debug {
     ///
     ///  - `size`: in bytes
     fn get(&mut self, offset: &Scalar, size: u8) -> Result<TrackedValue, TrackError>;
+    /// Gets a range of bytes
+    fn get_all(&mut self, offset: usize, len: usize) -> Result<(), TrackError> {
+        if let Some(end) = offset.checked_add(len) {
+            for i in offset..end {
+                self.get(&Scalar::constant64(i as u64), 1)?;
+            }
+            Ok(())
+        } else {
+            Err(TrackError::PointerOutOfBound)
+        }
+    }
     /// Tries to write to the region
     ///
     ///  - `size`: in bytes

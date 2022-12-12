@@ -65,6 +65,16 @@ impl Pointer {
         )
     }
 
+    /// Creates a nullable, readable, mutable pointer that allows arithmetic operations
+    pub fn rwa(pointee: Pointee) -> Pointer {
+        Self::new(
+            PointerAttributes::READABLE
+                | PointerAttributes::MUTABLE
+                | PointerAttributes::ARITHMETIC,
+            pointee,
+        )
+    }
+
     /// Creates a non-null, end-marking pointer
     pub fn end(pointee: Pointee) -> Pointer {
         Self::new(
@@ -138,6 +148,25 @@ impl Pointer {
                 self.pointee.borrow_mut().set(&self.offset, size, value)
             } else {
                 Err(TrackError::PointeeNotWritable)
+            }
+        } else {
+            Err(TrackError::PointerNullable)
+        }
+    }
+
+    /// Tries to read from the pointed memory
+    ///
+    /// - `len`: in bytes
+    pub fn get_all(&self, len: usize) -> Result<(), TrackError> {
+        if self.non_null() {
+            if self.is_readable() {
+                if let Some(Some(offset)) = self.offset.value64().map(|i| i.to_usize()) {
+                    self.pointee.borrow_mut().get_all(offset, len)
+                } else {
+                    Err(TrackError::PointerOffsetMalformed)
+                }
+            } else {
+                Err(TrackError::PointeeNotReadable)
             }
         } else {
             Err(TrackError::PointerNullable)

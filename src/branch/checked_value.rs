@@ -83,6 +83,8 @@ impl CheckedValue {
             }
             ArgumentType::FixedMemory(size) => {
                 if let Some(TrackedValue::Pointer(p)) = self.inner() {
+                    p.get_all(*size)
+                        .map_err(IllegalFunctionCall::IllegalPointer)?;
                     p.set_all(*size)
                         .map_err(IllegalFunctionCall::IllegalPointer)
                 } else {
@@ -172,7 +174,7 @@ macro_rules! impl_scalar_or_pointer_assign_op {
                     } else {
                         self.invalidate();
                     }
-                },
+                }
                 (TrackedValue::Scalar(s1), TrackedValue::Pointer(p2)) => {
                     if p2.is_arithmetic() && p2.non_null() {
                         let mut value = p2.clone();
@@ -192,7 +194,7 @@ macro_rules! impl_scalar_or_pointer_assign_op {
                     } else {
                         self.invalidate();
                     }
-                },
+                }
             }
         }
     };
