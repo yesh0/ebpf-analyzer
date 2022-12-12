@@ -32,6 +32,7 @@ fn test_with_assembly(
             helpers,
             setup,
             processed_instruction_limit: 20,
+            map_fd_collector: &|_| None,
         },
     ) {
         Ok(_) if success => {}
@@ -88,13 +89,16 @@ fn test_pointer_checks(asm: &str, success: bool, pc: usize) {
             *vm.reg(4) = Pointer::new(PointerAttributes::DATA_END, pointee.clone()).into();
             let empty = EmptyRegion::instance();
             vm.add_external_resource(empty.clone());
-            vm.add_external_resource(pointee);
+            vm.add_external_resource(pointee.clone());
             // Another region
             *vm.reg(5) = Pointer::new(
                 PointerAttributes::NON_NULL | PointerAttributes::ARITHMETIC,
                 empty,
             )
             .into();
+
+            // Nullable, readable
+            *vm.reg(6) = Pointer::rwa(pointee).into();
         },
         success,
         pc,
@@ -155,18 +159,22 @@ fn test_pointers() {
         0xff,
     );
 
-    // set_all
+    // get_all, set_all
     test_pointer_checks("mov r1, r2\ncall 1\nexit", false, 2);
     test_pointer_checks("jeq r1, 0, exit\ncall 1\nexit", false, 2);
-    test_pointer_checks("jeq r2, 0, exit\nmov r1, r2\ncall 1\nexit", true, 0xff);
+    test_pointer_checks("jeq r2, 0, exit\nmov r1, r2\ncall 1\nexit", false, 3);
     test_pointer_checks(
         "jeq r3, 0, exit\nmov r1, r3\nadd r1, 4\ncall 1\nexit",
-        true,
-        0xff,
+        false,
+        4,
     );
     test_pointer_checks(
         "jeq r2, 0, exit\nmov r1, r2\nmov r0, 1\nmul r0, 4\nadd r1, r0\ncall 1\nexit",
         false,
         5,
     );
+    test_pointer_checks("mov r1, r6\njeq r1, 0, exit\ncall 1\nexit", true, 0xff);
+    test_pointer_checks("mov r1, r6\njeq r1, 0, exit\nadd r1, 4\ncall 1\nexit", true, 0xff);
+    test_pointer_checks("mov r1, r6\njeq r1, 0, exit\nadd r1, 6\ncall 1\nexit", false, 4);
+    test_pointer_checks("mov r1, r6\njeq r1, 0, exit\nadd r1, 8\ncall 1\nexit", false, 4);
 }

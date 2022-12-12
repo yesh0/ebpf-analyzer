@@ -9,7 +9,7 @@ use core::{
 };
 
 use alloc::{rc::Rc, vec::Vec};
-use ebpf_consts::{READABLE_REGISTER_COUNT, WRITABLE_REGISTER_COUNT};
+use ebpf_consts::{READABLE_REGISTER_COUNT, WRITABLE_REGISTER_COUNT, BPF_IMM64_MAP_FD};
 
 use crate::{
     interpreter::{
@@ -17,13 +17,13 @@ use crate::{
         vm::{CallerContext, Vm},
     },
     safe::{mut_borrow_items, safe_ref_unsafe_cell},
-    spec::proto::VerifiableCall,
+    spec::{proto::VerifiableCall, Instruction},
     track::{
-        pointees::{empty_region::EmptyRegion, pointed, stack_region::StackRegion, Pointee},
+        pointees::{empty_region::EmptyRegion, pointed, stack_region::StackRegion, Pointee, map_resource::SimpleMap},
         pointer::Pointer,
         scalar::Scalar,
         TrackedValue,
-    },
+    }, analyzer::MapInfo,
 };
 
 use super::{
@@ -54,6 +54,7 @@ struct InnerState {
     regions: Vec<Pointee>,
     helpers: StaticHelpers,
     resources: ResourceTracker,
+    maps: Rc<RefCell<Vec<(i32, Pointee)>>>,
 }
 
 impl InnerState {
@@ -79,7 +80,7 @@ impl BranchState {
     ///
     /// Usually one should only use this at the start of verification.
     /// When branching, use [Clone] to duplicate the state.
-    pub fn new(helpers: StaticHelpers) -> Self {
+    pub fn new(helpers: StaticHelpers, maps: Vec<(i32, MapInfo)>) -> Self {
         let mut state = InnerState {
             pc: 0,
             ids: IdGen::default(),
@@ -91,6 +92,7 @@ impl BranchState {
             resources: ResourceTracker::default(),
             regions: alloc::vec![EmptyRegion::instance()],
             helpers,
+            maps: Rc::new(RefCell::new(Vec::new())),
         };
         let mut frame = state.gen_stack_pointer();
         frame += &Scalar::constant64(512);
@@ -98,7 +100,20 @@ impl BranchState {
         let id = state.resources.external(&mut state.ids);
         debug_assert!(id == 1);
         state.stack.borrow_mut().set_id(id);
-        Self(UnsafeCell::new(state))
+
+        // Initialize map regions
+        let map_fds = state.maps.clone();
+        let mut state_maps = map_fds.borrow_mut();
+        for (fd, info) in maps {
+            let map = pointed(SimpleMap::new(info.key_size as usize, info.value_size as usize));
+            state_maps.push((fd, map));
+        }
+
+        let mut vm = Self(UnsafeCell::new(state));
+        for (_, region) in state_maps.iter() {
+            vm.add_external_resource(region.clone());
+        }
+        vm
     }
 
     fn get_region(&self, id: Id) -> Pointee {
@@ -224,6 +239,7 @@ impl Clone for BranchState {
             resources: inner.resources.clone(),
             regions,
             helpers: inner.helpers,
+            maps: inner.maps.clone(),
         }));
         another
             .inner()
@@ -388,6 +404,22 @@ impl Vm<CheckedValue> for BranchState {
             false
         }
     }
+
+    fn load_imm64(&mut self, insn: &Instruction, _next: u64) -> Option<CheckedValue> {
+        match insn.src_reg() {
+            BPF_IMM64_MAP_FD => {
+                let fd = insn.imm;
+                let maps = self.inner_mut().maps.borrow_mut();
+                for (i, map) in maps.iter() {
+                    if fd == *i {
+                        return Some(Pointer::nrw(map.clone()).into());
+                    }
+                }
+                None
+            }
+            _ => None,
+        }
+    }
 }
 
 impl Debug for BranchState {
@@ -406,7 +438,7 @@ impl Debug for BranchState {
 #[cfg(test)]
 fn test_clone_or_not(clone: bool) {
     use crate::interpreter::value::Dereference;
-    let mut vm = BranchState::new(&[]);
+    let mut vm = BranchState::new(&[], Vec::new());
     let offset = &Scalar::constant64(512 - 4);
     assert!(vm
         .inner()

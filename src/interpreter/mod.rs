@@ -307,10 +307,23 @@ pub fn run<Value: VmValue, M: Vm<Value>, C: VmContext<Value, M>>(
                 ##
             }
             [[BPF_LD: LD], [BPF_IMM: IMM], [BPF_DW: DW]] => {
-                // TODO: Support relocation
-                let value = insn.imm as u32 as u64 | (code[*vm.pc()] & 0xFFFF_FFFF_0000_0000);
-                *vm.reg(insn.dst_reg()) = Value::constant64(value);
-                vm.update_reg(insn.dst_reg());
+                let next = code[*vm.pc()];
+                match insn.src_reg() {
+                    BPF_IMM64_IMM => {
+                        let value = insn.imm as u32 as u64 | (next & 0xFFFF_FFFF_0000_0000);
+                        *vm.reg(insn.dst_reg()) = Value::constant64(value);
+                        vm.update_reg(insn.dst_reg());
+                    }
+                    _ => {
+                        if let Some(value) = vm.load_imm64(&insn, next) {
+                            *vm.reg(insn.dst_reg()) = value;
+                            vm.update_reg(insn.dst_reg());
+                        } else {
+                            vm.invalidate("Unsupported imm64 instruction");
+                            break;
+                        }
+                    }
+                }
                 *vm.pc() += 1;
             }
             #[cfg(feature = "atomic32")]

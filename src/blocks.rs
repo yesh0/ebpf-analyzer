@@ -28,6 +28,14 @@ pub struct FunctionBlock {
 /// A collection of [FunctionBlock]
 pub type FunctionBlocks = Vec<FunctionBlock>;
 
+/// Information about an eBPF program
+pub struct ProgramInfo {
+    /// Functions
+    pub functions: FunctionBlocks,
+    /// Used map file descriptors
+    pub maps: Vec<i32>,
+}
+
 /// Error when we cannot parse the code into blocks
 #[derive(Debug, PartialEq, Eq)]
 pub enum IllegalStructure {
@@ -93,7 +101,7 @@ impl Boundaries {
     /// It checks whether the control flow will jump out of the code boundaries.
     ///
     /// TODO: It does not handle tail calls yet, which should behave like a BPF_EXIT.
-    fn sorted_boundaries(code: &[u64]) -> Result<Self, IllegalInstruction> {
+    fn sorted_boundaries(code: &[u64], info: &mut ProgramInfo) -> Result<Self, IllegalInstruction> {
         let mut labels: Vec<CodeOffset> = Vec::new();
         let mut functions: Vec<CodeOffset> = Vec::new();
         labels.push(0);
@@ -108,6 +116,7 @@ impl Boundaries {
                 ParsedInstruction::WideInstruction(w) => (w.instruction, 2),
             };
 
+            // Detect functions
             if let Some(offset) = insn.is_pseudo_call().or_else(|| insn.is_ldimm64_func()) {
                 // It seems the two instructions, despite one being a wide isns,
                 // both have the target address as `pc + 1`.
@@ -115,6 +124,13 @@ impl Boundaries {
                     functions.push(target);
                 } else {
                     return Err(IllegalInstruction::OutOfBoundFunction);
+                }
+            }
+
+            // Detect used maps
+            if let Some(fd) = insn.is_ldimm64_map_fd() {
+                if !info.maps.contains(&fd) {
+                    info.maps.push(fd);
                 }
             }
 
@@ -290,14 +306,26 @@ impl Boundaries {
 
 impl FunctionBlock {
     /// Parses the eBPF code into function blocks
-    pub fn new(code: &[u64]) -> Result<Vec<FunctionBlock>, VerificationError> {
-        let boundaries = Boundaries::sorted_boundaries(code)?;
+    pub fn new(code: &[u64], info: &mut ProgramInfo) -> Result<Vec<FunctionBlock>, VerificationError> {
+        let boundaries = Boundaries::sorted_boundaries(code, info)?;
         boundaries.parse_functions(code)
     }
 
     /// Returns the function count
     pub fn block_count(&self) -> usize {
         self.block_starts.len()
+    }
+}
+
+impl ProgramInfo {
+    /// Parses the eBPF code and gathers information
+    pub fn new(code: &[u64]) -> Result<ProgramInfo, VerificationError> {
+        let mut info = Self {
+            functions: Vec::new(),
+            maps: Vec::new(),
+        };
+        info.functions = FunctionBlock::new(code, &mut info)?;
+        Ok(info)
     }
 }
 
@@ -322,7 +350,7 @@ pub fn test_inter_function_jump() {
         // test:
         Instruction::pack(BPF_JMP_EXIT, 0, 0, 0, 0),
     ];
-    let result = FunctionBlock::new(code);
+    let result = ProgramInfo::new(code);
     match result.err() {
         Some(VerificationError::IllegalInstruction(IllegalInstruction::OutOfBoundJump)) => {}
         _ => panic!(),
@@ -344,9 +372,9 @@ pub fn test_inter_function_jump() {
         // test:
         Instruction::pack(BPF_JMP_EXIT, 0, 0, 0, 0),
     ];
-    let result = FunctionBlock::new(normal);
+    let result = ProgramInfo::new(normal);
     assert!(result.is_ok());
-    assert!(result.ok().unwrap().len() == 2);
+    assert!(result.ok().unwrap().functions.len() == 2);
 
     let complex_normal: &[u64] = &[
         // Code:
@@ -376,7 +404,7 @@ pub fn test_inter_function_jump() {
         Instruction::pack(BPF_ALU | BPF_K | BPF_MOV, 0, 0, 0, 0),
         Instruction::pack(BPF_JMP_EXIT, 0, 0, 0, 0),
     ];
-    let result = FunctionBlock::new(complex_normal);
+    let result = ProgramInfo::new(complex_normal);
     assert!(result.is_ok());
-    assert!(result.ok().unwrap().len() == 3);
+    assert!(result.ok().unwrap().functions.len() == 3);
 }

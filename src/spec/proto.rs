@@ -71,9 +71,9 @@ pub enum ReturnType {
     None,
     /// (Unknown) scalar value
     Scalar,
-    /// Allocated resource
+    /// Allocated resource (nullable)
     AllocatedResource(AnyType),
-    /// External resource
+    /// External resource (nullable)
     ExternalResource(AnyType),
 }
 
@@ -183,16 +183,9 @@ fn test_arg_check() {
         .is_err());
 
     use crate::track::pointer::Pointer;
-    use crate::track::pointer::PointerAttributes;
-    use alloc::rc::Rc;
-    use core::cell::RefCell;
-    let v: CheckedValue = Pointer::new(
-        PointerAttributes::NON_NULL | PointerAttributes::MUTABLE,
-        Rc::new(RefCell::new(
-            crate::track::pointees::stack_region::StackRegion::default(),
-        )),
-    )
-    .into();
+    use crate::track::pointees::stack_region::StackRegion;
+    let ptr = Pointer::nrw(pointed(StackRegion::default()));
+    let v: CheckedValue = ptr.clone().into();
     assert!(v.check_arg_type(&ArgumentType::Any, None).is_ok());
     assert!(v.check_arg_type(&ArgumentType::Scalar, None).is_err());
     assert!(v
@@ -200,7 +193,18 @@ fn test_arg_check() {
         .is_err());
     assert!(v
         .check_arg_type(&ArgumentType::FixedMemory(8), None)
+        .is_err());
+    assert!(ptr.set_all(8).is_ok());
+    assert!(v
+        .check_arg_type(&ArgumentType::FixedMemory(8), None)
         .is_ok());
+    assert!(v
+        .check_arg_type(
+            &ArgumentType::DynamicMemory(2),
+            Some(&Scalar::constant64(512).into())
+        )
+        .is_err());
+    assert!(ptr.set_all(512).is_ok());
     assert!(v
         .check_arg_type(
             &ArgumentType::DynamicMemory(2),

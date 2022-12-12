@@ -6,7 +6,7 @@ use core::{cell::UnsafeCell, num::Wrapping, mem::swap};
 use alloc::vec::Vec;
 use ebpf_consts::{READABLE_REGISTER_COUNT, STACK_REGISTER, STACK_SIZE, WRITABLE_REGISTER_COUNT};
 
-use crate::safe::{mut_borrow_items, safe_ref_unsafe_cell};
+use crate::{safe::{mut_borrow_items, safe_ref_unsafe_cell}, spec::Instruction};
 
 use super::{
     context::Forker,
@@ -57,6 +57,8 @@ pub trait Vm<Value: VmValue>: Forker<Value, Self> {
     ///
     /// It returns `false` if the stack frame is empty and the interpreter should now stop.
     fn return_relative(&mut self) -> bool;
+    /// Loads an immediate value by relocation
+    fn load_imm64(&mut self, insn: &Instruction, next: u64) -> Option<Value>;
 }
 
 /// Saves the caller pc, callee saved registers and its stack
@@ -199,6 +201,10 @@ impl Vm<Wrapping<u64>> for UncheckedVm<Wrapping<u64>> {
         } else {
             false
         }
+    }
+
+    fn load_imm64(&mut self, _insn: &Instruction, _next: u64) -> Option<Wrapping<u64>> {
+        None
     }
 }
 

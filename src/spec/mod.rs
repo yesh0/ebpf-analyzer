@@ -78,6 +78,8 @@ pub enum IllegalInstruction {
     OutOfBoundJump,
     /// Jumps out of the current function
     OutOfBoundFunction,
+    /// Map file descriptor not available (either a non-existent fd or forbidden usage)
+    MapFdNotAvailable,
 }
 
 impl ParsedInstruction {
@@ -244,7 +246,7 @@ impl Instruction {
         }
     }
 
-    /// Returns `true` if it is a call instruction with [BPF_CALL_PSEUDO]
+    /// Returns `Some(offset)` if it is a call instruction with [BPF_CALL_PSEUDO]
     pub fn is_pseudo_call(self) -> Option<i32> {
         if self.opcode == BPF_JMP_CALL && self.src_reg() == BPF_CALL_PSEUDO {
             Some(self.imm)
@@ -253,9 +255,18 @@ impl Instruction {
         }
     }
 
-    /// Returns `true` if it is a wide instruction with [BPF_IMM64_FUNC]
+    /// Returns `Some(offset)` if it is a wide instruction with [BPF_IMM64_FUNC]
     pub fn is_ldimm64_func(self) -> Option<i32> {
         if self.is_wide() && self.src_reg() == BPF_IMM64_FUNC {
+            Some(self.imm)
+        } else {
+            None
+        }
+    }
+
+    /// Returns `Some(fd)` if it is a wide instruction with [BPF_IMM64_MAP_FD]
+    pub fn is_ldimm64_map_fd(self) -> Option<i32> {
+        if self.is_wide() && self.src_reg() == BPF_IMM64_MAP_FD {
             Some(self.imm)
         } else {
             None

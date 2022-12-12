@@ -5,7 +5,7 @@ use core::cell::RefCell;
 use alloc::{rc::Rc, vec::Vec};
 
 use crate::{
-    blocks::{FunctionBlock, FunctionBlocks, IllegalStructure, TERMINAL_PSEUDO_BLOCK},
+    blocks::{FunctionBlocks, IllegalStructure, ProgramInfo, TERMINAL_PSEUDO_BLOCK},
     branch::{
         context::BranchContext,
         vm::{Branch, BranchState, StaticHelpers},
@@ -13,6 +13,14 @@ use crate::{
     interpreter::{context::VmContext, run, value::Verifiable, vm::Vm},
     spec::IllegalInstruction,
 };
+
+/// eBPF map info
+pub struct MapInfo {
+    /// Size (in bytes) of the map key
+    pub key_size: u32,
+    /// Size (in bytes) of the map value
+    pub value_size: u32,
+}
 
 /// Configuration: how the analyzer checks the code
 pub struct AnalyzerConfig<'a> {
@@ -27,6 +35,8 @@ pub struct AnalyzerConfig<'a> {
     /// The verifier goes through each possible branch, looking for invalid operations.
     /// This setting limits total processed instruction, summing up all the processed branches.
     pub processed_instruction_limit: usize,
+    /// Gets map file descriptor info
+    pub map_fd_collector: &'a dyn Fn(i32) -> Option<MapInfo>,
 }
 
 impl<'a> Default for AnalyzerConfig<'a> {
@@ -35,6 +45,7 @@ impl<'a> Default for AnalyzerConfig<'a> {
             helpers: Default::default(),
             setup: &|_| {},
             processed_instruction_limit: Default::default(),
+            map_fd_collector: &|_| None,
         }
     }
 }
@@ -66,9 +77,9 @@ impl From<IllegalInstruction> for VerificationError {
 impl Analyzer {
     /// Analyze an eBPF program
     pub fn analyze(code: &[u64], config: &AnalyzerConfig) -> Result<usize, VerificationError> {
-        let blocks = FunctionBlock::new(code)?;
-        Analyzer::has_unreachable_block(&blocks)?;
-        Analyzer::has_forbidden_state_change(code, &blocks, config)?;
+        let info = ProgramInfo::new(code)?;
+        Analyzer::has_unreachable_block(&info.functions)?;
+        Analyzer::has_forbidden_state_change(code, &info, config)?;
         Ok(0)
     }
 
@@ -105,15 +116,27 @@ impl Analyzer {
 
     fn has_forbidden_state_change(
         code: &[u64],
-        blocks: &FunctionBlocks,
+        info: &ProgramInfo,
         config: &AnalyzerConfig,
     ) -> Result<(), VerificationError> {
-        if blocks.is_empty() {
+        if info.functions.is_empty() {
             Err(VerificationError::IllegalStructure(IllegalStructure::Empty))
         } else {
+            let mut maps: Vec<(i32, MapInfo)> = Vec::new();
+            maps.reserve(info.maps.len());
+            for fd in &info.maps {
+                if let Some(map) = (config.map_fd_collector)(*fd) {
+                    maps.push((*fd, map));
+                } else {
+                    return Err(VerificationError::IllegalInstruction(
+                        IllegalInstruction::MapFdNotAvailable,
+                    ));
+                }
+            }
+
             let mut branches = BranchContext::new();
             branches.set_instruction_limit(config.processed_instruction_limit);
-            let mut branch = BranchState::new(config.helpers);
+            let mut branch = BranchState::new(config.helpers, maps);
             (config.setup)(&mut branch);
             branches.add_pending_branch(Rc::new(RefCell::new(branch)));
             while let Some(branch) = branches.next() {

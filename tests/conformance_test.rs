@@ -102,6 +102,7 @@ fn analyze_with_conformance_data(data: &ConformanceData) -> Result<(), ()> {
                 .into();
                 *vm.reg(2) = Scalar::constant64(data.memory.len() as u64).into();
             },
+            map_fd_collector: &|_| None,
         },
     ) {
         Ok(_) => Ok(()),

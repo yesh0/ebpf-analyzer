@@ -1,6 +1,6 @@
 use ebpf_analyzer::{
     analyzer::{Analyzer, AnalyzerConfig, VerificationError},
-    blocks::FunctionBlock,
+    blocks::ProgramInfo,
     spec::{Instruction, ParsedInstruction},
 };
 use llvm_util::parse_llvm_dump;
@@ -35,11 +35,11 @@ fn validate_valid_code() {
 #[test]
 fn validate_valid_blocks() {
     let code = parse_llvm_dump(SIMPLE1);
-    match FunctionBlock::new(&code) {
-        Ok(blocks) => assert!(
-            blocks[0].block_count() == 8,
+    match ProgramInfo::new(&code) {
+        Ok(info) => assert!(
+            info.functions[0].block_count() == 8,
             "Block count does not match: {}",
-            blocks[0].block_count()
+            info.functions[0].block_count()
         ),
         Err(err) => panic!("Err: {err:?}"),
     }

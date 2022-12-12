@@ -1,7 +1,7 @@
 use std::{cell::RefCell, rc::Rc};
 
 use ebpf_analyzer::{
-    analyzer::{Analyzer, AnalyzerConfig, VerificationError},
+    analyzer::{Analyzer, AnalyzerConfig, VerificationError, MapInfo},
     branch::{checked_value::CheckedValue, vm::BranchState},
     interpreter::vm::Vm,
     spec::proto::{
@@ -124,6 +124,11 @@ const HELPERS: AnalyzerConfig = AnalyzerConfig {
             context,
         )
         .into();
+    },
+    map_fd_collector: &|fd| if fd == 1024 {
+        Some(MapInfo{ key_size: 8, value_size: 16 })
+    } else {
+        None
     },
 };
 
