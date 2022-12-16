@@ -100,7 +100,6 @@ pub fn assemble(asm: &str) -> ConformanceData {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .ok()
         .unwrap();
 
     let child_output = child.wait_with_output().ok().unwrap();

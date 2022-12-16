@@ -76,11 +76,11 @@ impl From<IllegalInstruction> for VerificationError {
 
 impl Analyzer {
     /// Analyze an eBPF program
-    pub fn analyze(code: &[u64], config: &AnalyzerConfig) -> Result<usize, VerificationError> {
+    pub fn analyze(code: &[u64], config: &AnalyzerConfig) -> Result<ProgramInfo, VerificationError> {
         let info = ProgramInfo::new(code)?;
         Analyzer::has_unreachable_block(&info.functions)?;
         Analyzer::has_forbidden_state_change(code, &info, config)?;
-        Ok(0)
+        Ok(info)
     }
 
     /// Runs a BFS to see if there is any unreachable blocks
