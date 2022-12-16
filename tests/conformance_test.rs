@@ -126,13 +126,11 @@ fn test_conformance() -> Result<(), io::Error> {
     assert!(cfg!(feature = "atomic64"));
 
     let mut entries: Vec<_> = fs::read_dir(Path::new(DATA_DIR))?
-        .filter(|r| r.is_ok())
-        .map(|ok| ok.ok().unwrap())
+        .filter_map(|ok| ok.ok())
         .collect();
     entries.sort_unstable_by_key(|a| a.file_name());
     for entry in entries {
         let data = get_conformance_data(entry.path().to_str().unwrap())
-            .ok()
             .unwrap();
         assert!(test_with_conformance_data(data).is_ok());
     }

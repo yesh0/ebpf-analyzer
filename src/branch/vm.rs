@@ -124,7 +124,7 @@ impl BranchState {
                 .inner()
                 .regions
                 .binary_search_by(|r| r.borrow_mut().get_id().cmp(&id));
-            self.inner().regions[index.ok().unwrap()].clone()
+            self.inner().regions[index.unwrap()].clone()
         }
     }
 
@@ -138,7 +138,7 @@ impl BranchState {
                     .unwrap_or(borrowed)
                     .cmp(&id)
             });
-            self.inner().regions[index.ok().unwrap()].clone()
+            self.inner().regions[index.unwrap()].clone()
         }
     }
 

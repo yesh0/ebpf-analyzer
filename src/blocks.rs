@@ -374,7 +374,7 @@ pub fn test_inter_function_jump() {
     ];
     let result = ProgramInfo::new(normal);
     assert!(result.is_ok());
-    assert!(result.ok().unwrap().functions.len() == 2);
+    assert!(result.unwrap().functions.len() == 2);
 
     let complex_normal: &[u64] = &[
         // Code:
@@ -406,5 +406,5 @@ pub fn test_inter_function_jump() {
     ];
     let result = ProgramInfo::new(complex_normal);
     assert!(result.is_ok());
-    assert!(result.ok().unwrap().functions.len() == 3);
+    assert!(result.unwrap().functions.len() == 3);
 }

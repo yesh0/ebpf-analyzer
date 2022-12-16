@@ -19,7 +19,7 @@ pub struct ConformanceData {
 fn parse_bytes(s: &str) -> Vec<u8> {
     let mut v: Vec<u8> = Vec::new();
     for byte in s.split_ascii_whitespace() {
-        v.push(u8::from_str_radix(byte, 16).ok().unwrap());
+        v.push(u8::from_str_radix(byte, 16).unwrap());
     }
     v
 }
@@ -72,9 +72,9 @@ pub const BPF_CONF_TEMP: &str = "BPF_CONF_TEMP";
 ///
 /// It panics otherwise.
 pub fn assemble(asm: &str) -> ConformanceData {
-    let runner = env::var(BPF_CONF_RUNNER).ok().unwrap();
-    let temp = env::var(BPF_CONF_TEMP).ok().unwrap_or("/tmp".into());
-    let plugin = env::var(BPF_CONF_PLUGIN).ok().unwrap_or("/bin/true".into());
+    let runner = env::var(BPF_CONF_RUNNER).unwrap();
+    let temp = env::var(BPF_CONF_TEMP).unwrap_or("/tmp".into());
+    let plugin = env::var(BPF_CONF_PLUGIN).unwrap_or("/bin/true".into());
 
     let dir = format!("{temp}/bpf_asm");
     assert!(fs::create_dir_all(Path::new(&dir)).is_ok());
@@ -102,10 +102,10 @@ pub fn assemble(asm: &str) -> ConformanceData {
         .spawn()
         .unwrap();
 
-    let child_output = child.wait_with_output().ok().unwrap();
-    let err_data = from_utf8(&child_output.stderr).ok().unwrap();
+    let child_output = child.wait_with_output().unwrap();
+    let err_data = from_utf8(&child_output.stderr).unwrap();
     let file = format!("{output}.txt");
     assert!(fs::write(&file, err_data).is_ok());
 
-    get_conformance_data(&file).ok().unwrap()
+    get_conformance_data(&file).unwrap()
 }

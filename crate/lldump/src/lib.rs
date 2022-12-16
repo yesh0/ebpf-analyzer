@@ -7,7 +7,7 @@ fn from_bytes(s: &[&str], i: usize) -> u64 {
     let mut result = 0;
     let mut shift = 0;
     for c in s.iter().skip(i).take(8) {
-        let v = u8::from_str_radix(c, 16).ok().unwrap();
+        let v = u8::from_str_radix(c, 16).unwrap();
         result |= (v as u64) << shift;
         shift += 8;
     }

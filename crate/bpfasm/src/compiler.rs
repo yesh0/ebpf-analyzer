@@ -257,7 +257,6 @@ exit",
             )
             .unwrap(),
         )
-        .ok()
         .unwrap();
     let entry = module.get_finalized_function(main);
     let main_fn = unsafe { core::mem::transmute::<_, fn(u64, u64, u64, u64, u64) -> u64>(entry) };

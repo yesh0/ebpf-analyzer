@@ -198,7 +198,7 @@ fn test_map_helpers() {
     assert!(unsafe { vm.reg(2).set_at(0, 8, &Scalar::constant64(0).into()) });
     let result = lookup.call(&mut vm);
     assert!(result.is_ok());
-    let mut value = result.ok().unwrap();
+    let mut value = result.unwrap();
 
     match value.inner_mut() {
         Some(TrackedValue::Pointer(ref mut p)) => {
@@ -239,13 +239,13 @@ fn test_map_helpers() {
     assert!(unsafe { vm.reg(3).set_at(4, 4, &Scalar::constant64(0).into()) });
     let result = update.call(&mut vm);
     assert!(result.is_ok());
-    assert!(matches!(result.ok().unwrap().inner(), Some(TrackedValue::Scalar(_))));
+    assert!(matches!(result.unwrap().inner(), Some(TrackedValue::Scalar(_))));
 
     // Test map delete
     let delete = MapDeleteCall{};
     let result = delete.call(&mut vm);
     assert!(result.is_ok());
-    assert!(matches!(result.ok().unwrap().inner(), Some(TrackedValue::Scalar(_))));
+    assert!(matches!(result.unwrap().inner(), Some(TrackedValue::Scalar(_))));
 
     // No pointer leak is allowed
     assert!(unsafe { vm.reg(2).set_at(0, 8, &Pointer::rwa(map).into()) });
