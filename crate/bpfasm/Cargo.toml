@@ -12,3 +12,6 @@ cranelift-frontend = "0.90.1"
 cranelift-codegen = "0.90.1"
 cranelift-module = "0.90.1"
 cranelift-jit = "0.90.1"
+
+[dev-dependencies]
+llvm-util = { path = "../lldump" }

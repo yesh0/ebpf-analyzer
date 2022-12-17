@@ -5,32 +5,31 @@ use cranelift_codegen::{
     entity::EntityRef,
     ir::{
         types::*, AbiParam, Block, InstBuilder, Signature, StackSlotData, StackSlotKind,
-        UserFuncName,
+        UserFuncName, condcodes::IntCC,
     },
     Context,
 };
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{FuncId, Linkage, Module, ModuleError};
-use ebpf_analyzer::{blocks::ProgramInfo, interpreter::helper::HelperPointer, spec::Instruction};
+use ebpf_analyzer::{blocks::{ProgramInfo, FunctionBlock}, interpreter::helper::HelperPointer, spec::Instruction};
 use ebpf_consts::*;
 use ebpf_macros::opcode_match;
 
 /// eBPF assembler config
-pub struct Compiler<'a> {
-    /// Returns a pointer from a map descriptor
-    pub map_fd_mapper: &'a dyn Fn(i32) -> Option<u64>,
-}
+pub struct Compiler {}
 
 type LinkageModule = JITModule;
 
 /// Runtime environment for the compiled function
-pub struct Runtime {
+pub struct Runtime<'a> {
     /// Helper functions
     pub helpers: &'static [HelperPointer],
+    /// Returns a pointer from a map descriptor
+    pub map_fd_mapper: &'a dyn Fn(i32) -> Option<u64>,
 }
 
-impl Compiler<'_> {
+impl Compiler {
     /// Compiles the code
     pub fn compile(
         &self,
@@ -78,6 +77,7 @@ impl Compiler<'_> {
                     builder.switch_to_block(*block);
                 }
                 let mut pc = start;
+                let mut jumped = false;
                 while pc < end {
                     let insn = Instruction::from_raw(code[pc]);
                     pc += 1;
@@ -96,6 +96,9 @@ impl Compiler<'_> {
                             BPF_AND: band,
                             BPF_OR : bor,
                             BPF_XOR: bxor,
+                            BPF_LSH: ishl,
+                            BPF_RSH: ushr,
+                            BPF_ARSH: sshr,
                             // Mov
                             BPF_MOV: MOV,
                          ]
@@ -117,6 +120,17 @@ impl Compiler<'_> {
                                 ##
                             ##
 
+                            #?((udiv)|(urem))
+                                let is_zero = builder.ins().icmp_imm(IntCC::Equal, rhs, 0);
+                                #?((ALU32))
+                                    let one = builder.ins().iconst(I32, 1);
+                                ##
+                                #?((ALU64))
+                                    let one = builder.ins().iconst(I64, 1);
+                                ##
+                                let rhs = builder.ins().select(is_zero, one, rhs);
+                            ##
+
                             #?((__MOV__))
                                 let dst = builder.use_var(dst_reg);
                                 #?((ALU32))
@@ -124,18 +138,35 @@ impl Compiler<'_> {
                                 ##
 
                                 let result = builder.ins().#=2(dst, rhs);
+                                #?((udiv))
+                                    #?((ALU32))
+                                        let zero = builder.ins().iconst(I32, 0);
+                                    ##
+                                    #?((ALU64))
+                                        let zero = builder.ins().iconst(I64, 0);
+                                    ##
+                                    let result = builder.ins().select(is_zero, zero, result);
+                                ##
+                                #?((urem))
+                                    let result = builder.ins().select(is_zero, dst, result);
+                                ##
+
                                 #?((ALU32))
                                     let result = builder.ins().uextend(I64, result);
                                 ##
                                 builder.def_var(dst_reg, result);
                             ##
                             #?((MOV))
+                                #?((ALU32))
+                                    let rhs = builder.ins().uextend(I64, rhs);
+                                ##
                                 builder.def_var(dst_reg, rhs);
                             ##
                         }
                         [[BPF_JMP: JMP], [BPF_EXIT: EXIT]] => {
                             let result = builder.use_var(registers[0]);
                             builder.ins().return_(&[result]);
+                            jumped = true;
                         }
                         [[BPF_JMP: JMP], [BPF_CALL: CALL]] => {
                             if insn.src_reg() == 0 {
@@ -155,10 +186,82 @@ impl Compiler<'_> {
                                 builder.def_var(registers[0], result);
                             }
                         }
+                        // BPF_JA: Unconditional jump
+                        [[BPF_JMP: JMP], [BPF_JA: JA]] => {
+                            builder.ins().jump(blocks[f.from[j][0]], &[]);
+                            jumped = true;
+                        }
+                        // JMP32 / JMP: Conditional
+                        [[BPF_JMP32: JMP32, BPF_JMP: JMP64], [BPF_X: X, BPF_K: K],
+                         [
+                            // Unsigned
+                            BPF_JEQ: Equal,
+                            BPF_JLT: UnsignedLessThan,
+                            BPF_JLE: UnsignedLessThanOrEqual,
+                            BPF_JSLT: SignedLessThan,
+                            BPF_JSLE: SignedLessThanOrEqual,
+                            // Inverse
+                            BPF_JNE: NotEqual,
+                            BPF_JGT: UnsignedGreaterThan,
+                            BPF_JGE: UnsignedGreaterThanOrEqual,
+                            BPF_JSGT: SignedGreaterThan,
+                            BPF_JSGE: SignedGreaterThanOrEqual,
+                            // Misc
+                            BPF_JSET: JSET,
+                         ]
+                        ] => {
+                            let dst_reg = registers[insn.dst_reg() as usize];
+                            #?((K))
+                                #?((JMP32))
+                                    let t = I32;
+                                ##
+                                #?((JMP64))
+                                    let t = I64;
+                                ##
+                                let rhs = builder.ins().iconst(t, insn.imm as i64);
+                            ##
+                            #?((X))
+                                let rhs = builder.use_var(registers[insn.src_reg() as usize]);
+                                #?((JMP32))
+                                    let rhs = builder.ins().ireduce(I32, rhs);
+                                ##
+                            ##
+
+                            let dst = builder.use_var(dst_reg);
+                            #?((JMP32))
+                                let dst = builder.ins().ireduce(I32, dst);
+                            ##
+                            #?((__JSET__))
+                                let cmp = IntCC::#=2;
+                                let c = builder.ins().icmp(cmp, dst, rhs);
+                            ##
+                            #?((JSET))
+                                let c = builder.ins().band(dst, rhs);
+                            ##
+                            let (to, fall_through) = self.get_branch_info(f, j);
+                            builder.ins().brnz(c, blocks[to], &[]);
+                            builder.ins().jump(blocks[fall_through], &[]);
+                            jumped = true;
+                        }
+                        [[BPF_LD: LD], [BPF_IMM: IMM], [BPF_DW: DW]] => {
+                            let next = code[pc];
+                            pc += 1;
+                            match insn.src_reg() {
+                                BPF_IMM64_IMM => {
+                                    let value = insn.imm as u32 as u64 | (next & 0xFFFF_FFFF_0000_0000);
+                                    let rhs = builder.ins().iconst(I64, value as i64);
+                                    builder.def_var(registers[insn.dst_reg() as usize], rhs);
+                                }
+                                _ => panic!("Unsupported instruction"),
+                            }
+                        }
                         _ => {
-                            panic!();
+                            panic!("Unsupported instruction");
                         }
                     }
+                }
+                if !jumped {
+                    builder.ins().jump(blocks[j + 1], &[]);
                 }
             }
             builder.seal_all_blocks();
@@ -169,6 +272,18 @@ impl Compiler<'_> {
         }
         module.finalize_definitions()?;
         Ok((functions[0], module))
+    }
+
+    fn get_branch_info(&self, info: &FunctionBlock, i: usize) -> (usize, usize) {
+        let targets = &info.from[i];
+        assert_eq!(targets.len(), 2);
+        assert!(targets.contains(&(i + 1)));
+        let to = if targets[0] == i + 1 {
+            targets[1]
+        } else {
+            targets[0]
+        };
+        (to, i + 1)
     }
 
     fn functions(
@@ -244,6 +359,14 @@ impl Compiler<'_> {
     }
 }
 
+/// Transmutes a pointer to a function of eBPF function signature
+///
+/// # Safety
+/// It uses [core::mem::transmute] under the hood.
+pub unsafe fn to_ebpf_function(pointer: *const u8) -> HelperPointer {
+    unsafe { core::mem::transmute::<_, HelperPointer>(pointer) }
+}
+
 #[cfg(test)]
 static mut INJECTED: u64 = 0;
 
@@ -270,9 +393,7 @@ fn test_some() {
             "../../tests/bpf_conformance/build/bin/bpf_conformance_runner",
         );
     }
-    let c = Compiler {
-        map_fd_mapper: &|_| None,
-    };
+    let c = Compiler {};
     let data = llvm_util::conformance::assemble(
         "mov r0, 1
 xor r0, r0
@@ -308,11 +429,14 @@ exit",
                 },
             )
             .unwrap(),
-            &Runtime { helpers: &[nop, println_tester] },
+            &Runtime {
+                helpers: &[nop, println_tester],
+                map_fd_mapper: &|_| None,
+            },
         )
         .unwrap();
     let entry = module.get_finalized_function(main);
-    let main_fn = unsafe { core::mem::transmute::<_, fn(u64, u64, u64, u64, u64) -> u64>(entry) };
+    let main_fn = unsafe { to_ebpf_function(entry) };
 
     let mut i = 137u32;
     for _ in 0..1000 {
