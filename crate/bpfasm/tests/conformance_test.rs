@@ -23,16 +23,6 @@ fn test_compiler_conformance() {
         "call_local",
         "lock",
         "stack",
-        // Endianness conversion support
-        "be16",
-        "be32",
-        "be64",
-        "ldxh-all",
-        "ldxw-all",
-        "le16",
-        "le32",
-        "le64",
-        "stxb-all",
     ];
     // If you are to debug this in an IDE (e.g., VS Code),
     // you might want to change the path to "./tests/conformance".
@@ -99,9 +89,6 @@ fn test_compiler_conformance() {
             )
             .unwrap();
         let main_func = unsafe { to_ebpf_function(module.get_finalized_function(main)) };
-        if data.name.contains("same-reg") {
-            std::println!("Pre");
-        }
         assert_eq!(
             main_func(
                 data.memory.as_ptr() as u64,

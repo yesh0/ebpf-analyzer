@@ -5,7 +5,7 @@ use cranelift_codegen::{
     entity::EntityRef,
     ir::{
         condcodes::IntCC, types::*, AbiParam, Block, InstBuilder, MemFlags,
-        Signature, StackSlotData, StackSlotKind, UserFuncName,
+        Signature, StackSlotData, StackSlotKind, UserFuncName, Endianness,
     },
     Context,
 };
@@ -312,6 +312,41 @@ impl Compiler {
                             ##
                             let pointer = builder.use_var(registers[insn.dst_reg() as usize]);
                             builder.ins().store(mem_flags, value, pointer, insn.off as i32);
+                        }
+                        // ALU / ALU64: Byte swap
+                        [[BPF_ALU: ALU32], [BPF_END: END],
+                         [
+                            BPF_TO_LE: Little,
+                            BPF_TO_BE: Big,
+                         ]
+                        ] => {
+                            let t = match insn.imm {
+                                64 => I64,
+                                32 => I32,
+                                16 => I16,
+                                _ => panic!("Unsupported width"),
+                            };
+
+                            let dst_reg = registers[insn.dst_reg() as usize];
+                            let value = builder.use_var(dst_reg);
+                            let value = if t == I64 {
+                                value
+                            } else {
+                                builder.ins().ireduce(t, value)
+                            };
+
+                            let target = Endianness::#=2;
+                            let result = if target == module.isa().endianness() {
+                                value
+                            } else {
+                                builder.ins().bswap(value)
+                            };
+                            let result = if t == I64 {
+                                result
+                            } else {
+                                builder.ins().uextend(I64, result)
+                            };
+                            builder.def_var(dst_reg, result);
                         }
                         _ => {
                             panic!("Unsupported instruction");
