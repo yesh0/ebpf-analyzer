@@ -4,15 +4,19 @@ use alloc::vec::Vec;
 use cranelift_codegen::{
     entity::EntityRef,
     ir::{
-        types::*, AbiParam, Block, InstBuilder, Signature, StackSlotData, StackSlotKind,
-        UserFuncName, condcodes::IntCC,
+        condcodes::IntCC, types::*, AbiParam, Block, InstBuilder, MemFlags,
+        Signature, StackSlotData, StackSlotKind, UserFuncName,
     },
     Context,
 };
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{FuncId, Linkage, Module, ModuleError};
-use ebpf_analyzer::{blocks::{ProgramInfo, FunctionBlock}, interpreter::helper::HelperPointer, spec::Instruction};
+use ebpf_analyzer::{
+    blocks::{FunctionBlock, ProgramInfo},
+    interpreter::helper::HelperPointer,
+    spec::Instruction,
+};
 use ebpf_consts::*;
 use ebpf_macros::opcode_match;
 
@@ -60,6 +64,9 @@ impl Compiler {
             for _ in 0..f.block_starts.len() {
                 blocks.push(builder.create_block());
             }
+
+            let mut mem_flags = MemFlags::new();
+            mem_flags.set_notrap();
 
             for (j, block) in blocks.iter().enumerate() {
                 let (start, end) = self.get_block_range(code, info, i, j);
@@ -266,6 +273,45 @@ impl Compiler {
                                 }
                                 _ => panic!("Unsupported instruction"),
                             }
+                        }
+                        [[BPF_LDX: LDX], [BPF_MEM: MEM],
+                         [
+                            BPF_B: I8,
+                            BPF_H: I16,
+                            BPF_W: I32,
+                            BPF_DW: I64,
+                         ]
+                        ] => {
+                            let t = #=2;
+                            let src_reg = registers[insn.src_reg() as usize];
+                            let pointer = builder.use_var(src_reg);
+                            let value = builder.ins().load(t, mem_flags, pointer, insn.off as i32);
+                            #?((__I64__))
+                                let value = builder.ins().uextend(I64, value);
+                            ##
+                            builder.def_var(registers[insn.dst_reg() as usize], value);
+                        }
+                        [[BPF_STX: STX, BPF_ST: ST], [BPF_MEM: MEM],
+                         [
+                            BPF_B: I8,
+                            BPF_H: I16,
+                            BPF_W: I32,
+                            BPF_DW: I64,
+                         ]
+                        ] => {
+                            #?((STX))
+                                let value = builder.use_var(registers[insn.src_reg() as usize]);
+                                #?((__I64__))
+                                    let t = #=2;
+                                    let value = builder.ins().ireduce(t, value);
+                                ##
+                            ##
+                            #?((ST))
+                                let t = #=2;
+                                let value = builder.ins().iconst(t, insn.imm as u32 as u64 as i64);
+                            ##
+                            let pointer = builder.use_var(registers[insn.dst_reg() as usize]);
+                            builder.ins().store(mem_flags, value, pointer, insn.off as i32);
                         }
                         _ => {
                             panic!("Unsupported instruction");
