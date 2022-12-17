@@ -91,6 +91,7 @@ impl Compiler {
                     let opcode = insn.opcode;
                     opcode_match! {
                         opcode,
+                        // ALU / ALU64: BInary operators
                         [[BPF_ALU: ALU32, BPF_ALU64: ALU64], [BPF_X: X, BPF_K: K],
                          [
                             // Algebraic
@@ -130,11 +131,12 @@ impl Compiler {
                                         let dst = builder.ins().ireduce(t, dst);
                                     ##
 
-                                    #?((isub))
-                                        let result = builder.ins().iadd_imm(dst, -(insn.imm as i64));
-                                    ##
                                     #?((__isub__))
                                         let result = builder.ins().#"{}_imm"2(dst, insn.imm as i64);
+                                    ##
+                                    #?((isub))
+                                        // There is no `isub_imm`
+                                        let result = builder.ins().iadd_imm(dst, -(insn.imm as i64));
                                     ##
                                 ##
                             ##
@@ -145,6 +147,7 @@ impl Compiler {
                                     let rhs = builder.ins().ireduce(I32, rhs);
                                 ##
 
+                                // Avoid FPU traps
                                 #?((udiv)|(urem))
                                     let is_zero = builder.ins().icmp_imm(IntCC::Equal, rhs, 0);
                                     let one = builder.ins().iconst(t, 1);
@@ -162,11 +165,14 @@ impl Compiler {
                                     let result = builder.ins().#=2(dst, rhs);
                                 ##
 
+                                // Make behaviours match the spec
                                 #?((udiv))
+                                    // zero_division ? 0 : result
                                     let zero = builder.ins().iconst(t, 0);
                                     let result = builder.ins().select(is_zero, zero, result);
                                 ##
                                 #?((urem))
+                                    // zero_division ? dst : result
                                     let result = builder.ins().select(is_zero, dst, result);
                                 ##
                             ##
@@ -188,11 +194,13 @@ impl Compiler {
                             ##
                             builder.def_var(dst_reg, result);
                         }
+                        // BPF_EXIT: Returns
                         [[BPF_JMP: JMP], [BPF_EXIT: EXIT]] => {
                             let result = builder.use_var(registers[0]);
                             builder.ins().return_(&[result]);
                             jumped = true;
                         }
+                        // BPF_CALL: Calls
                         [[BPF_JMP: JMP], [BPF_CALL: CALL]] => {
                             if insn.src_reg() == 0 {
                                 let helper = insn.imm;
@@ -236,33 +244,34 @@ impl Compiler {
                          ]
                         ] => {
                             let dst_reg = registers[insn.dst_reg() as usize];
+                            let dst = builder.use_var(dst_reg);
+                            #?((JMP32))
+                                let dst = builder.ins().ireduce(I32, dst);
+                            ##
+
                             #?((K))
-                                #?((JMP32))
-                                    let t = I32;
+                                #?((__JSET__))
+                                    let cmp = IntCC::#=2;
+                                    let c = builder.ins().icmp_imm(cmp, dst, insn.imm as i64);
                                 ##
-                                #?((JMP64))
-                                    let t = I64;
+                                #?((JSET))
+                                    let c = builder.ins().band_imm(dst, insn.imm as i64);
                                 ##
-                                let rhs = builder.ins().iconst(t, insn.imm as i64);
                             ##
                             #?((X))
                                 let rhs = builder.use_var(registers[insn.src_reg() as usize]);
                                 #?((JMP32))
                                     let rhs = builder.ins().ireduce(I32, rhs);
                                 ##
+                                #?((__JSET__))
+                                    let cmp = IntCC::#=2;
+                                    let c = builder.ins().icmp(cmp, dst, rhs);
+                                ##
+                                #?((JSET))
+                                    let c = builder.ins().band(dst, rhs);
+                                ##
                             ##
 
-                            let dst = builder.use_var(dst_reg);
-                            #?((JMP32))
-                                let dst = builder.ins().ireduce(I32, dst);
-                            ##
-                            #?((__JSET__))
-                                let cmp = IntCC::#=2;
-                                let c = builder.ins().icmp(cmp, dst, rhs);
-                            ##
-                            #?((JSET))
-                                let c = builder.ins().band(dst, rhs);
-                            ##
                             let (to, fall_through) = self.get_branch_info(f, j);
                             builder.ins().brnz(c, blocks[to], &[]);
                             builder.ins().jump(blocks[fall_through], &[]);
