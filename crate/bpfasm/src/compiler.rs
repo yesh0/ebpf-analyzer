@@ -12,7 +12,7 @@ use cranelift_codegen::{
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{FuncId, Linkage, Module, ModuleError};
-use ebpf_analyzer::{blocks::ProgramInfo, spec::Instruction};
+use ebpf_analyzer::{blocks::ProgramInfo, interpreter::helper::HelperPointer, spec::Instruction};
 use ebpf_consts::*;
 use ebpf_macros::opcode_match;
 
@@ -24,12 +24,19 @@ pub struct Compiler<'a> {
 
 type LinkageModule = JITModule;
 
+/// Runtime environment for the compiled function
+pub struct Runtime {
+    /// Helper functions
+    pub helpers: &'static [HelperPointer],
+}
+
 impl Compiler<'_> {
     /// Compiles the code
     pub fn compile(
         &self,
         code: &[u64],
         info: &ProgramInfo,
+        runtime: &Runtime,
     ) -> Result<(FuncId, LinkageModule), ModuleError> {
         let builder = JITBuilder::new(cranelift_module::default_libcall_names());
         let mut module = JITModule::new(builder.unwrap());
@@ -38,6 +45,8 @@ impl Compiler<'_> {
 
         let mut context = Context::new();
         self.function_signature(&mut context);
+        let sig = context.func.signature.clone();
+        let sig_ref = context.func.import_signature(sig);
         let mut builder_context = FunctionBuilderContext::new();
         let functions = self.functions(info, &mut module, &context.func.signature)?;
 
@@ -128,6 +137,24 @@ impl Compiler<'_> {
                             let result = builder.use_var(registers[0]);
                             builder.ins().return_(&[result]);
                         }
+                        [[BPF_JMP: JMP], [BPF_CALL: CALL]] => {
+                            if insn.src_reg() == 0 {
+                                let helper = insn.imm;
+                                let callee = builder.ins().iconst(
+                                    I64, runtime.helpers[helper as usize] as *const
+                                    HelperPointer as u64 as i64);
+                                let args = &[
+                                    builder.use_var(registers[1]),
+                                    builder.use_var(registers[2]),
+                                    builder.use_var(registers[3]),
+                                    builder.use_var(registers[4]),
+                                    builder.use_var(registers[5]),
+                                ];
+                                let inst = builder.ins().call_indirect(sig_ref, callee, args);
+                                let result = builder.func.dfg.first_result(inst);
+                                builder.def_var(registers[0], result);
+                            }
+                        }
                         _ => {
                             panic!();
                         }
@@ -217,6 +244,24 @@ impl Compiler<'_> {
     }
 }
 
+#[cfg(test)]
+static mut INJECTED: u64 = 0;
+
+#[cfg(test)]
+fn println_tester(r1: u64, r2: u64, r3: u64, r4: u64, r5: u64) -> u64 {
+    let time = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap();
+    std::println!("Hello World: {r1} {r2} {r3} {r4} {r5}");
+    unsafe { INJECTED = time.as_millis() as u64 };
+    unsafe { INJECTED }
+}
+
+#[cfg(test)]
+fn nop(_: u64, _: u64, _: u64, _: u64, _: u64) -> u64 {
+    0
+}
+
 #[test]
 fn test_some() {
     if std::env::var(BPF_CONF_RUNNER).is_err() {
@@ -230,32 +275,40 @@ fn test_some() {
     };
     let data = llvm_util::conformance::assemble(
         "mov r0, 1
+xor r0, r0
 add r0, r1
 sub r0, r2
 add r0, r3
 sub r0, r4
 add r0, r5
+mov r6, r0
+call 1
+add r0, r6
 exit",
     );
-    use llvm_util::conformance::BPF_CONF_RUNNER;
     use ebpf_analyzer::interpreter::vm::Vm;
+    use llvm_util::conformance::BPF_CONF_RUNNER;
     let (main, module) = c
         .compile(
             &data.code,
             &ebpf_analyzer::analyzer::Analyzer::analyze(
                 &data.code,
                 &ebpf_analyzer::analyzer::AnalyzerConfig {
-                    helpers: Default::default(),
+                    helpers: &[
+                        ebpf_analyzer::spec::proto::helpers::BPF_HELPER_GET_SCALAR,
+                        ebpf_analyzer::spec::proto::helpers::BPF_HELPER_GET_SCALAR,
+                    ],
                     setup: &|vm| {
                         for i in 1..=5 {
                             *vm.reg(i) = ebpf_analyzer::track::scalar::Scalar::unknown().into();
                         }
                     },
-                    processed_instruction_limit: 10,
+                    processed_instruction_limit: 20,
                     map_fd_collector: &|_| None,
                 },
             )
             .unwrap(),
+            &Runtime { helpers: &[nop, println_tester] },
         )
         .unwrap();
     let entry = module.get_finalized_function(main);
@@ -265,6 +318,9 @@ exit",
     for _ in 0..1000 {
         i = (i * 37) % 349;
         let j = i as u64;
-        assert_eq!(main_fn(j * 5, j * 4, j * 3, j * 2, j), j * 3 + 1);
+        assert_eq!(
+            main_fn(j * 5, j * 4, j * 3, j * 2, j),
+            j * 3 + unsafe { INJECTED }
+        );
     }
 }
