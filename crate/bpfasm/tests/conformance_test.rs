@@ -11,7 +11,7 @@ use llvm_util::conformance::for_all_conformance_data;
 
 #[test]
 fn test_compiler_conformance() {
-    const UNSUPPORTED: &[&str] = &["call-stack", "call_local", "lock", "neg", "stack"];
+    const UNSUPPORTED: &[&str] = &["call-stack", "call_local", "lock", "stack"];
     // If you are to debug this in an IDE (e.g., VS Code),
     // you might want to change the path to "./tests/conformance".
     // Or probably you can somehow configure the debugger. I dunno.

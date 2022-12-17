@@ -163,6 +163,18 @@ impl Compiler {
                                 builder.def_var(dst_reg, rhs);
                             ##
                         }
+                        // ALU / ALU64: Unary operators
+                        [[BPF_ALU: ALU32, BPF_ALU64: ALU64], [BPF_K: K],
+                         [BPF_NEG: neg]] => {
+                            let dst_reg = registers[insn.dst_reg() as usize];
+                            let value = builder.use_var(dst_reg);
+                            let result = builder.ins().ineg(value);
+                            #?((ALU32))
+                                let result = builder.ins().ireduce(I32, result);
+                                let result = builder.ins().uextend(I64, result);
+                            ##
+                            builder.def_var(dst_reg, result);
+                        }
                         [[BPF_JMP: JMP], [BPF_EXIT: EXIT]] => {
                             let result = builder.use_var(registers[0]);
                             builder.ins().return_(&[result]);
