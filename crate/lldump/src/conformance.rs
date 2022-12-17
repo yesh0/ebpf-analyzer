@@ -4,7 +4,8 @@ use std::{
     hash::{Hash, Hasher},
     io,
     path::Path,
-    process::{self, Stdio}, str::from_utf8,
+    process::{self, Stdio},
+    str::from_utf8,
 };
 
 /// Wrapper for bpf_conformance debug output
@@ -108,4 +109,16 @@ pub fn assemble(asm: &str) -> ConformanceData {
     assert!(fs::write(&file, err_data).is_ok());
 
     get_conformance_data(&file).unwrap()
+}
+
+/// Iterates through a directory for conformance data files
+pub fn for_all_conformance_data(dir: &str) -> io::Result<Vec<ConformanceData>> {
+    let mut entries: Vec<_> = fs::read_dir(Path::new(dir))?
+        .filter_map(|ok| ok.ok())
+        .collect();
+    entries.sort_unstable_by_key(|a| a.file_name());
+    Ok(entries
+        .iter()
+        .map(|entry| get_conformance_data(entry.path().to_str().unwrap()).unwrap())
+        .collect())
 }

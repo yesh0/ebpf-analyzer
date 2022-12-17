@@ -360,6 +360,8 @@ impl Vm<CheckedValue> for BranchState {
             } else {
                 self.invalidate("Function call failed");
             }
+        } else {
+            self.invalidate("Invalid helper id");
         }
     }
 

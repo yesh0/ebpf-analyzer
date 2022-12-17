@@ -1,9 +1,7 @@
 use std::{
     cell::RefCell,
-    fs,
     io::{self, stderr, Write},
     num::Wrapping,
-    path::Path,
     rc::Rc,
 };
 
@@ -122,16 +120,12 @@ const DATA_DIR: &str = "./tests/conformance";
 #[cfg(all(feature = "atomic32", feature = "atomic64"))]
 #[test]
 fn test_conformance() -> Result<(), io::Error> {
+    use llvm_util::conformance::for_all_conformance_data;
+
     assert!(cfg!(feature = "atomic32"));
     assert!(cfg!(feature = "atomic64"));
 
-    let mut entries: Vec<_> = fs::read_dir(Path::new(DATA_DIR))?
-        .filter_map(|ok| ok.ok())
-        .collect();
-    entries.sort_unstable_by_key(|a| a.file_name());
-    for entry in entries {
-        let data = get_conformance_data(entry.path().to_str().unwrap())
-            .unwrap();
+    for data in for_all_conformance_data(DATA_DIR)? {
         assert!(test_with_conformance_data(data).is_ok());
     }
     Ok(())
