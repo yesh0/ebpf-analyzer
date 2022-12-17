@@ -1,4 +1,4 @@
-use proc_macro2::{Ident, TokenStream, TokenTree};
+use proc_macro2::{Ident, Span, TokenStream, TokenTree};
 use quote::ToTokens;
 use syn::{
     parenthesized,
@@ -7,11 +7,12 @@ use syn::{
     LitInt, LitStr, Token,
 };
 
-use crate::parser::Alias;
+use crate::parser::{Alias, Aliases};
 
 /// Controls whether a code block is inserted
 pub struct Conditions {
     pub when: Vec<Vec<Alias>>,
+    pub position: Span,
 }
 
 impl Conditions {
@@ -56,6 +57,7 @@ impl Parse for Conditions {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let conditions;
         parenthesized!(conditions in input);
+        let position = conditions.span();
         let conds: Punctuated<Punctuated<IdentOrLitStr, Token!(,)>, Token!(|)> = conditions
             .parse_terminated(|input| {
                 let content;
@@ -70,6 +72,7 @@ impl Parse for Conditions {
                     .iter()
                     .map(|aliases| Vec::from_iter(aliases.iter().map(|i| i.0.clone()))),
             ),
+            position,
         })
     }
 }
@@ -143,6 +146,34 @@ impl Parse for Replacing {
 
 /// A code block
 pub struct CodeBlock(pub Vec<Replacing>);
+
+impl CodeBlock {
+    /// Checks whether all conditions are alright
+    pub fn validate(&self, combinations: &[Aliases]) -> syn::Result<()> {
+        for block in &self.0 {
+            if let Replacing::Nested(conditions, nested) = block {
+                nested.validate(combinations)?;
+                if let Some(alias) = conditions
+                    .when
+                    .iter()
+                    .flat_map(|condition| condition.iter())
+                    .find(|alias| {
+                        combinations.iter().all(|combination| {
+                            !combination.contains(alias)
+                                && !combination.contains(alias.trim_matches('_'))
+                        })
+                    })
+                {
+                    return Err(syn::Error::new(
+                        conditions.position,
+                        "Undeclared condition: ".to_string() + alias,
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+}
 
 impl Parse for CodeBlock {
     fn parse(input: ParseStream) -> syn::Result<Self> {

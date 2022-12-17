@@ -1,3 +1,7 @@
+//! Provides the [opcode_match] macro.
+
+#![forbid(missing_docs)]
+
 mod opcode;
 mod parser;
 mod generator;
@@ -14,11 +18,11 @@ extern crate ebpf_consts;
 /// Generates a complex match statement
 ///
 /// ## Format
-/// 
+///
 /// ```
 /// use ebpf_macros::opcode_match;
 /// use ebpf_consts::*;
-/// 
+///
 /// let opcode = 0u8;
 /// opcode_match! {
 ///     opcode,
@@ -36,7 +40,7 @@ extern crate ebpf_consts;
 ///     _ => { println!("Unknown code"); }
 /// };
 /// ```
-/// 
+///
 /// - Use `#?((required1, required2)|(condition2)) CODE; ##` to insert conditional code snippets.
 /// - Use `#?((__exclusive1__,required2)) CODE; ##` to require `!exclusive1 && required2`.
 /// - Use `#0`, `#1`, ... to refer to the alias as a raw code element.

@@ -92,7 +92,7 @@ pub fn run<Value: VmValue, M: Vm<Value>, C: VmContext<Value, M>>(
                     dst.lower_half_assign();
                 ##
 
-                #?((div_assign,K)|(rem_assign,K))
+                #?((safe_div_assign,K)|(safe_rem_assign,K))
                     if insn.imm == 0 {
                         vm.invalidate("Div by 0");
                         break;

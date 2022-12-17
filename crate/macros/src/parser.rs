@@ -33,7 +33,14 @@ pub struct MatchArm {
 
 pub type Alias = String;
 
+/// The aliasing part of the macro, like `BPF_ALU64: ALU64`
 pub struct Aliases(pub Vec<(Alias, &'static str)>);
+
+impl Aliases {
+    pub fn contains(&self, alias: &str) -> bool {
+        self.0.iter().any(|(s, t)| s == alias || *t == alias)
+    }
+}
 
 /// Reads all code blocks until meeting a top-level bracket
 fn until_bracket(input: &ParseStream) -> syn::Result<Vec<Replacing>> {
@@ -115,12 +122,14 @@ impl Parse for MatchArm {
         bracketed!(header in input);
         let combinations: Punctuated<Aliases, Token!(,)> =
             header.parse_terminated(Aliases::parse)?;
+        let combinations = Vec::from_iter(combinations);
         let _: Token!(=>) = input.parse()?;
         let code;
         braced!(code in input);
         let code: CodeBlock = code.parse()?;
+        code.validate(&combinations)?;
         Ok(MatchArm {
-            combinations: Vec::from_iter(combinations),
+            combinations,
             header: None,
             code,
         })
@@ -142,7 +151,7 @@ impl Parse for AliasPair {
         };
         match AliasPair::find_opcode_component(&component) {
             Some(name) => Ok(AliasPair(name, alias)),
-            None => Err(input.error("No such opcode component found")),
+            None => Err(syn::Error::new_spanned(component, "No such opcode component found")),
         }
     }
 }
