@@ -132,6 +132,16 @@ fn construct_code(
                     Err(err) => panic!("{err:?}"),
                 }
             }
+            Replacing::WithFormatted(i, format_str) => {
+                if aliases.len() <= *i {
+                    panic!("#{i} out of range!");
+                }
+                let symbol = &aliases[*i];
+                match TokenStream2::from_str(&format_str.replace("{}", &symbol)) {
+                    Ok(tokens) => output.extend(tokens),
+                    Err(err) => panic!("{err:?}"),
+                }
+            }
             Replacing::Nested(conditions, code) => {
                 if conditions.matches(enabled) {
                     construct_code(aliases, enabled, code, output);

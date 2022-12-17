@@ -89,6 +89,8 @@ pub enum Replacing {
     WithString(usize),
     /// A `#=0`, `#=1` token, to be replaced with a ident or puncts
     WithRaw(usize),
+    /// A `#"...{}..."0` token, to be formatted with an ident
+    WithFormatted(usize, String),
 }
 
 /// Reads tokens, stopping before a '#' punct
@@ -118,17 +120,24 @@ impl Parse for Replacing {
                 let _: Token!(?) = input.parse()?;
                 let conditions: Conditions = input.parse()?;
                 Replacing::Nested(conditions, input.parse()?)
-            } else if input.peek(Token!(=)) || input.peek(LitInt) {
+            } else if input.peek(Token!(=)) || input.peek(LitInt) || input.peek(LitStr) {
                 // Reference
                 let raw = input.peek(Token!(=));
+                let formatted = if input.peek(LitStr) {
+                    input.parse::<LitStr>().ok()
+                } else {
+                    None
+                };
                 if raw {
                     let _: Token!(=) = input.parse()?;
                 }
-                let number: LitInt = input.parse()?;
+                let number = input.parse::<LitInt>()?.base10_parse::<usize>()?;
                 if raw {
-                    Replacing::WithRaw(number.base10_parse::<usize>()?)
+                    Replacing::WithRaw(number)
+                } else if let Some(format_str) = formatted {
+                    Replacing::WithFormatted(number, format_str.value())
                 } else {
-                    Replacing::WithString(number.base10_parse::<usize>()?)
+                    Replacing::WithString(number)
                 }
             } else if input.peek(Token!(#)) {
                 // End

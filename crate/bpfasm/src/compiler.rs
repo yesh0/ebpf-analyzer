@@ -111,64 +111,70 @@ impl Compiler {
                          ]
                         ] => {
                             let dst_reg = registers[insn.dst_reg() as usize];
-                            #?((K))
-                                #?((ALU32))
-                                    let t = I32;
-                                ##
-                                #?((ALU64))
-                                    let t = I64;
-                                ##
-                                let rhs = builder.ins().iconst(t, insn.imm as i64);
+                            #?((ALU32))
+                                let t = I32;
                             ##
+                            #?((ALU64))
+                                let t = I64;
+                            ##
+                            // Allowing dead code
+                            let _ = t;
+
+                            #?((K))
+                                #?((MOV))
+                                    let result = builder.ins().iconst(t, insn.imm as i64);
+                                ##
+                                #?((__MOV__))
+                                    let dst = builder.use_var(dst_reg);
+                                    #?((ALU32))
+                                        let dst = builder.ins().ireduce(t, dst);
+                                    ##
+
+                                    #?((isub))
+                                        let result = builder.ins().iadd_imm(dst, -(insn.imm as i64));
+                                    ##
+                                    #?((__isub__))
+                                        let result = builder.ins().#"{}_imm"2(dst, insn.imm as i64);
+                                    ##
+                                ##
+                            ##
+
                             #?((X))
                                 let rhs = builder.use_var(registers[insn.src_reg() as usize]);
                                 #?((ALU32))
                                     let rhs = builder.ins().ireduce(I32, rhs);
                                 ##
-                            ##
 
-                            #?((udiv)|(urem))
-                                let is_zero = builder.ins().icmp_imm(IntCC::Equal, rhs, 0);
-                                #?((ALU32))
-                                    let one = builder.ins().iconst(I32, 1);
-                                ##
-                                #?((ALU64))
-                                    let one = builder.ins().iconst(I64, 1);
-                                ##
-                                let rhs = builder.ins().select(is_zero, one, rhs);
-                            ##
-
-                            #?((__MOV__))
-                                let dst = builder.use_var(dst_reg);
-                                #?((ALU32))
-                                    let dst = builder.ins().ireduce(I32, dst);
+                                #?((udiv)|(urem))
+                                    let is_zero = builder.ins().icmp_imm(IntCC::Equal, rhs, 0);
+                                    let one = builder.ins().iconst(t, 1);
+                                    let rhs = builder.ins().select(is_zero, one, rhs);
                                 ##
 
-                                let result = builder.ins().#=2(dst, rhs);
-                                #?((udiv))
+                                #?((MOV))
+                                    let result = rhs;
+                                ##
+                                #?((__MOV__))
+                                    let dst = builder.use_var(dst_reg);
                                     #?((ALU32))
-                                        let zero = builder.ins().iconst(I32, 0);
+                                        let dst = builder.ins().ireduce(I32, dst);
                                     ##
-                                    #?((ALU64))
-                                        let zero = builder.ins().iconst(I64, 0);
-                                    ##
+                                    let result = builder.ins().#=2(dst, rhs);
+                                ##
+
+                                #?((udiv))
+                                    let zero = builder.ins().iconst(t, 0);
                                     let result = builder.ins().select(is_zero, zero, result);
                                 ##
                                 #?((urem))
                                     let result = builder.ins().select(is_zero, dst, result);
                                 ##
+                            ##
 
-                                #?((ALU32))
-                                    let result = builder.ins().uextend(I64, result);
-                                ##
-                                builder.def_var(dst_reg, result);
+                            #?((ALU32))
+                                let result = builder.ins().uextend(I64, result);
                             ##
-                            #?((MOV))
-                                #?((ALU32))
-                                    let rhs = builder.ins().uextend(I64, rhs);
-                                ##
-                                builder.def_var(dst_reg, rhs);
-                            ##
+                            builder.def_var(dst_reg, result);
                         }
                         // ALU / ALU64: Unary operators
                         [[BPF_ALU: ALU32, BPF_ALU64: ALU64], [BPF_K: K],
