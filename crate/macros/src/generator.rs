@@ -137,7 +137,7 @@ fn construct_code(
                     panic!("#{i} out of range!");
                 }
                 let symbol = &aliases[*i];
-                match TokenStream2::from_str(&format_str.replace("{}", &symbol)) {
+                match TokenStream2::from_str(&format_str.replace("{}", symbol)) {
                     Ok(tokens) => output.extend(tokens),
                     Err(err) => panic!("{err:?}"),
                 }
