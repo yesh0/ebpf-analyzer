@@ -230,9 +230,15 @@ pub const BPF_ATOMIC_AND      : i32 = BPF_AND as i32;
 /// BPF STX ATMOIC immediate code: atomic xor
 pub const BPF_ATOMIC_XOR      : i32 = BPF_XOR as i32;
 /// BPF STX ATMOIC immediate code: atomic exchange
-pub const BPF_ATOMIC_XCHG     : i32 = 0xe0 | BPF_ATOMIC_FETCH;
+/// (without the FETCH modifier, which is actually mandated though)
+pub const BPF_ATOMIC_XCHG_NO_FETCH     : i32 = 0xe0;
+/// BPF STX ATMOIC immediate code: atomic exchange
+pub const BPF_ATOMIC_XCHG              : i32 = BPF_ATOMIC_XCHG_NO_FETCH | BPF_ATOMIC_FETCH;
 /// BPF STX ATMOIC immediate code: atomic compare and swap
-pub const BPF_ATOMIC_CMPXCHG  : i32 = 0xf0 | BPF_ATOMIC_FETCH;
+/// (without the FETCH modifier, which is actually mandated though)
+pub const BPF_ATOMIC_CMPXCHG_NO_FETCH  : i32 = 0xf0;
+/// BPF STX ATMOIC immediate code: atomic compare and swap
+pub const BPF_ATOMIC_CMPXCHG           : i32 = BPF_ATOMIC_CMPXCHG_NO_FETCH | BPF_ATOMIC_FETCH;
 
 /// A module containing bit masks
 pub mod mask {

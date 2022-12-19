@@ -4,8 +4,8 @@ use alloc::vec::Vec;
 use cranelift_codegen::{
     entity::EntityRef,
     ir::{
-        condcodes::IntCC, types::*, AbiParam, Block, InstBuilder, MemFlags,
-        Signature, StackSlotData, StackSlotKind, UserFuncName, Endianness,
+        condcodes::IntCC, types::*, AbiParam, Block, Endianness, InstBuilder, MemFlags, Signature,
+        StackSlotData, StackSlotKind, UserFuncName, AtomicRmwOp,
     },
     Context,
 };
@@ -363,6 +363,12 @@ impl Compiler {
                             };
                             builder.def_var(dst_reg, result);
                         }
+                        [[BPF_STX: STX], [BPF_ATOMIC: ATOMIC], [BPF_W: W]] => {
+                            self.push_atomic(insn, &mut builder, &registers, I32);
+                        }
+                        [[BPF_STX: STX], [BPF_ATOMIC: ATOMIC], [BPF_DW: DW]] => {
+                            self.push_atomic(insn, &mut builder, &registers, I64);
+                        }
                         _ => {
                             panic!("Unsupported instruction");
                         }
@@ -380,6 +386,71 @@ impl Compiler {
         }
         module.finalize_definitions()?;
         Ok((functions[0], module))
+    }
+
+    fn push_atomic(
+        &self,
+        insn: Instruction,
+        builder: &mut FunctionBuilder,
+        registers: &[Variable],
+        t: Type,
+    ) {
+        let atomic_code = insn.imm;
+        let mem_flags = MemFlags::new().with_notrap();
+
+        let dst = builder.use_var(registers[insn.dst_reg() as usize]);
+        let dst = builder.ins().iadd_imm(dst, insn.off as i64);
+
+        let src_reg = registers[insn.src_reg() as usize];
+        let src_value = builder.use_var(src_reg);
+        let src = if t == I32 {
+            builder.ins().ireduce(I32, src_value)
+        } else {
+            src_value
+        };
+
+        opcode_match! {
+            atomic_code as i32,
+            [[BPF_ATOMIC_FETCH: FETCH, BPF_ATOMIC_NO_FETCH: NO_FETCH],
+             [
+                BPF_ATOMIC_ADD: Add,
+                BPF_ATOMIC_OR : Or,
+                BPF_ATOMIC_AND: And,
+                BPF_ATOMIC_XOR: Xor,
+                BPF_ATOMIC_XCHG: Xchg,
+             ]
+            ] => {
+                let op = AtomicRmwOp::#=1;
+                #?((FETCH))
+                    let result = builder.ins().atomic_rmw(t, mem_flags, op, dst, src);
+                    let result = if t == I32 {
+                        builder.ins().uextend(I64, result)
+                    } else {
+                        result
+                    };
+                    builder.def_var(src_reg, result);
+                ##
+                #?((__FETCH__))
+                    builder.ins().atomic_rmw(t, mem_flags, op, dst, src);
+                ##
+            }
+            [[BPF_ATOMIC_FETCH: FETCH], [BPF_ATOMIC_CMPXCHG: CMPXCHG]] => {
+                let expected_value = builder.use_var(registers[0]);
+                let expected = if t == I32 {
+                    builder.ins().ireduce(I32, expected_value)
+                } else {
+                    expected_value
+                };
+                let result = builder.ins().atomic_cas(mem_flags, dst, expected, src);
+                let result = if t == I32 {
+                    builder.ins().uextend(I64, result)
+                } else {
+                    result
+                };
+                builder.def_var(registers[0], result);
+            }
+            _ => panic!("Unsupported atomic operation")
+        }
     }
 
     fn get_branch_info(&self, info: &FunctionBlock, i: usize) -> (usize, usize) {

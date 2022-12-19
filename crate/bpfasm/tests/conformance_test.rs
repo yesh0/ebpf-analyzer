@@ -21,7 +21,6 @@ fn test_compiler_conformance() {
         // Stack and local call support
         "call-stack",
         "call_local",
-        "lock",
         "stack",
     ];
     // If you are to debug this in an IDE (e.g., VS Code),
