@@ -12,7 +12,7 @@ use ebpf_analyzer::{
         scalar::Scalar,
     },
 };
-use ebpf_aot::compiler::{to_ebpf_function, Compiler, Runtime};
+use ebpf_compiler::compiler::{to_ebpf_function, Compiler, Runtime};
 use llvm_util::conformance::for_all_conformance_data;
 
 #[test]
@@ -26,7 +26,7 @@ fn test_compiler_conformance() {
     // If you are to debug this in an IDE (e.g., VS Code),
     // you might want to change the path to "./analyzer/tests/conformance".
     // Or probably you can somehow configure the debugger. I dunno.
-    for data in for_all_conformance_data("../../analyzer/tests/conformance").unwrap() {
+    for data in for_all_conformance_data("../analyzer/tests/conformance").unwrap() {
         if !data.error.is_empty()
             || data.name.contains("-fail")
             || UNSUPPORTED
