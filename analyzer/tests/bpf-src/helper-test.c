@@ -10,5 +10,5 @@ int main() {
       putc('a' + (((unsigned int) j) % 26));
     }
   }
-  return 0; 
+  return 0;
 }

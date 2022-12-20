@@ -130,3 +130,9 @@ fn test_conformance() -> Result<(), io::Error> {
     }
     Ok(())
 }
+
+#[test]
+fn test_one() {
+    let data = get_conformance_data("./tests/conformance/call-stack-fail.data.txt").unwrap();
+    assert!(test_with_conformance_data(data).is_ok());
+}
