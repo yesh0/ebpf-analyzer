@@ -24,7 +24,7 @@ fn test_compiler_conformance() {
         "stack",
     ];
     // If you are to debug this in an IDE (e.g., VS Code),
-    // you might want to change the path to "./tests/conformance".
+    // you might want to change the path to "./analyzer/tests/conformance".
     // Or probably you can somehow configure the debugger. I dunno.
     for data in for_all_conformance_data("../../tests/conformance").unwrap() {
         if !data.error.is_empty()

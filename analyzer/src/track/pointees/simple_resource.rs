@@ -1,12 +1,8 @@
 //! A simple resource pointee
 
-use core::cell::RefCell;
-
-use alloc::rc::Rc;
-
 use crate::{branch::id::Id, track::{scalar::Scalar, TrackedValue, TrackError}};
 
-use super::{AnyType, MemoryRegion, SafeClone, Pointee, InnerRegion};
+use super::{AnyType, MemoryRegion, SafeClone, Pointee, InnerRegion, pointed};
 
 /// A resource with a type
 #[derive(Clone, Debug)]
@@ -46,7 +42,7 @@ impl SafeClone for SimpleResource {
     }
 
     fn safe_clone(&self) -> Pointee {
-        Rc::new(RefCell::new(self.clone()))
+        pointed(self.clone())
     }
 
     fn redirects(&mut self, _mapper: &dyn Fn(Id) -> Option<Pointee>) {

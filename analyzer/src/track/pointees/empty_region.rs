@@ -1,12 +1,8 @@
 //! See [EmptyRegion].
 
-use core::cell::RefCell;
-
-use alloc::rc::Rc;
-
 use crate::{track::{scalar::Scalar, TrackedValue, TrackError}, branch::id::Id};
 
-use super::{MemoryRegion, SafeClone, Pointee};
+use super::{MemoryRegion, SafeClone, Pointee, pointed};
 
 /// Not a valid region
 ///
@@ -18,7 +14,7 @@ pub struct EmptyRegion(Id);
 impl EmptyRegion {
     /// Creates an empty region instance
     pub fn instance() -> Pointee {
-        Rc::new(RefCell::new(EmptyRegion(0)))
+        pointed(EmptyRegion(0))
     }
 }
 
@@ -42,7 +38,7 @@ impl SafeClone for EmptyRegion {
     }
 
     fn safe_clone(&self) -> Pointee {
-        Rc::new(RefCell::new(self.clone()))
+        pointed(self.clone())
     }
 
     fn redirects(&mut self, _mapper: &dyn Fn(Id) -> Option<Pointee>) {

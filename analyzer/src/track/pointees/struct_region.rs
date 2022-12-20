@@ -1,15 +1,13 @@
 //! See [StructRegion].
 
-use core::cell::RefCell;
-
-use alloc::{rc::Rc, vec::Vec};
+use alloc::vec::Vec;
 
 use crate::{
     branch::id::Id,
     track::{pointer::Pointer, scalar::Scalar, TrackError, TrackedValue},
 };
 
-use super::{is_access_in_range, MemoryRegion, Pointee, SafeClone};
+use super::{is_access_in_range, MemoryRegion, Pointee, SafeClone, pointed};
 
 /// A memory region of a struct instance
 ///
@@ -111,7 +109,7 @@ impl SafeClone for StructRegion {
     }
 
     fn safe_clone(&self) -> Pointee {
-        Rc::new(RefCell::new(self.clone()))
+        pointed(self.clone())
     }
 
     fn redirects(&mut self, mapper: &dyn Fn(Id) -> Option<Pointee>) {

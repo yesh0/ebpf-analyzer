@@ -1,8 +1,6 @@
 //! See [StackRegion].
 
-use core::cell::RefCell;
-
-use alloc::{rc::Rc, vec::Vec};
+use alloc::vec::Vec;
 use ebpf_consts::STACK_SIZE;
 
 use crate::{
@@ -10,7 +8,7 @@ use crate::{
     track::{scalar::Scalar, TrackError, TrackedValue},
 };
 
-use super::{is_access_in_range, MemoryRegion, SafeClone};
+use super::{is_access_in_range, MemoryRegion, SafeClone, Pointee, pointed};
 
 const BIT_MAP_BYTES: usize = STACK_SIZE / 8;
 
@@ -268,9 +266,8 @@ impl SafeClone for StackRegion {
         self.id = id
     }
 
-    fn safe_clone(&self) -> super::Pointee {
-        let c = self.clone();
-        Rc::new(RefCell::new(c))
+    fn safe_clone(&self) -> Pointee {
+        pointed(self.clone())
     }
 
     fn redirects(&mut self, mapper: &dyn Fn(Id) -> Option<super::Pointee>) {

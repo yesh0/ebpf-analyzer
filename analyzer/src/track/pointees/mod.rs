@@ -127,5 +127,5 @@ fn is_access_in_range(
 
 /// Wraps something into [Pointee]
 pub fn pointed<T: MemoryRegion + 'static>(region: T) -> Pointee {
-    Rc::new(RefCell::new(region))
+    Rc::new(RefCell::new(region)) as Pointee
 }

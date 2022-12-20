@@ -1,8 +1,5 @@
 //! A dynamic region
 
-use core::cell::RefCell;
-
-use alloc::rc::Rc;
 use num_traits::ToPrimitive;
 
 use crate::{
@@ -10,7 +7,7 @@ use crate::{
     track::{scalar::Scalar, TrackError, TrackedValue},
 };
 
-use super::{is_access_in_range, InnerRegion, MemoryRegion, Pointee, SafeClone};
+use super::{is_access_in_range, InnerRegion, MemoryRegion, Pointee, SafeClone, pointed};
 
 /// A region with a dynamic range
 #[derive(Clone, Debug)]
@@ -58,7 +55,7 @@ impl SafeClone for DynamicRegion {
     }
 
     fn safe_clone(&self) -> Pointee {
-        Rc::new(RefCell::new(self.clone()))
+        pointed(self.clone())
     }
 
     fn redirects(&mut self, _mapper: &dyn Fn(Id) -> Option<Pointee>) {}
