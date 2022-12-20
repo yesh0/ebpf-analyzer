@@ -1,11 +1,11 @@
 [workspace]
 members = [
     "analyzer",
-    "crate/atomic",
-    "crate/consts",
-    "crate/macros",
-    "crate/lldump",
-    "crate/bpfasm",
+    "crates/atomic",
+    "crates/consts",
+    "crates/macros",
+    "crates/lldump",
+    "crates/bpfasm",
 ]
 
 [workspace.package]
