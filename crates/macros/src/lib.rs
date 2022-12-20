@@ -13,8 +13,6 @@ use syn::parse_macro_input;
 
 use crate::generator::generate;
 
-extern crate ebpf_consts;
-
 /// Generates a complex match statement
 ///
 /// ## Format
