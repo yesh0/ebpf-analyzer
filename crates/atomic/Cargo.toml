@@ -1,0 +1,11 @@
+[package]
+name = "ebpf-atomic"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[features]
+default = ["atomic32", "atomic64"]
+atomic32 = []
+atomic64 = []

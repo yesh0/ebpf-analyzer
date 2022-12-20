@@ -1,0 +1,15 @@
+[package]
+name = "ebpf-macros"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+ebpf-consts = { path = "../consts" }
+proc-macro2 = "1.0.46"
+quote = "1.0.21"
+syn = "1.0.102"
+
+[lib]
+proc-macro = true

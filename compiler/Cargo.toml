@@ -1,0 +1,20 @@
+[package]
+name = "ebpf-compiler"
+description = "An eBPF JIT/AOT compiler using Cranelift"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+ebpf-analyzer = { path = "../analyzer" }
+ebpf-macros = { path = "../crates/macros" }
+ebpf-consts = { path = "../crates/consts" }
+target-lexicon = "0.12.5"
+cranelift-frontend = "0.90.1"
+cranelift-codegen = "0.90.1"
+cranelift-module = "0.90.1"
+cranelift-jit = "0.90.1"
+
+[dev-dependencies]
+llvm-util = { path = "../crates/lldump" }

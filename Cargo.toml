@@ -1,33 +1,15 @@
-[package]
-name = "ebpf-analyzer"
-version = "0.1.0"
-edition = "2021"
-description = "More than an eBPF verifier"
-repository = "https://githubcom/yesh0/ebpf-analyzer"
-license = "MIT"
-
 [workspace]
 members = [
-    "crate/atomic",
-    "crate/consts",
-    "crate/macros",
-    "crate/lldump",
-    "crate/bpfasm",
+    "analyzer",
+    "compiler",
+    "crates/atomic",
+    "crates/consts",
+    "crates/macros",
+    "crates/lldump",
 ]
 
-[features]
-default = ["atomic32", "atomic64"]
-atomic32 = ["ebpf-atomic/atomic32"]
-atomic64 = ["ebpf-atomic/atomic64"]
-
-[dependencies]
-ebpf-atomic = { path = "./crate/atomic", optional = true }
-ebpf-consts = { path = "./crate/consts" }
-ebpf-macros = { path = "./crate/macros" }
-
-bitflags = "1.3"
-num-traits = "0.2"
-
-[dev-dependencies]
-rand = "0.8"
-llvm-util = { path = "./crate/lldump" }
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+repository = "https://githubcom/yesh0/ebpf-analyzer"
+license = "MIT"
