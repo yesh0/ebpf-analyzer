@@ -569,7 +569,7 @@ fn test_some() {
     if std::env::var(BPF_CONF_RUNNER).is_err() {
         std::env::set_var(
             BPF_CONF_RUNNER,
-            "../../tests/bpf_conformance/build/bin/bpf_conformance_runner",
+            "../../analyzer/tests/bpf_conformance/build/bin/bpf_conformance_runner",
         );
     }
     let c = Compiler {};

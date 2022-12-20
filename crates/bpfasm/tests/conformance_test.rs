@@ -26,7 +26,7 @@ fn test_compiler_conformance() {
     // If you are to debug this in an IDE (e.g., VS Code),
     // you might want to change the path to "./analyzer/tests/conformance".
     // Or probably you can somehow configure the debugger. I dunno.
-    for data in for_all_conformance_data("../../tests/conformance").unwrap() {
+    for data in for_all_conformance_data("../../analyzer/tests/conformance").unwrap() {
         if !data.error.is_empty()
             || data.name.contains("-fail")
             || UNSUPPORTED
