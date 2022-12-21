@@ -1,16 +1,15 @@
 //! An eBPF assembler using Cranelift
 
-use alloc::vec::Vec;
+use alloc::{vec::Vec, string::ToString};
 use cranelift_codegen::{
     entity::EntityRef,
     ir::{
-        condcodes::IntCC, types::*, AbiParam, Block, Endianness, InstBuilder, MemFlags, Signature,
+        condcodes::IntCC, types::*, Block, Endianness, InstBuilder, MemFlags, Signature,
         StackSlotData, StackSlotKind, UserFuncName, AtomicRmwOp,
     },
     Context,
 };
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
-use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{FuncId, Linkage, Module, ModuleError};
 use ebpf_analyzer::{
     blocks::{FunctionBlock, ProgramInfo},
@@ -20,10 +19,12 @@ use ebpf_analyzer::{
 use ebpf_consts::*;
 use ebpf_macros::opcode_match;
 
+use crate::module::BpfModule;
+
 /// eBPF assembler config
 pub struct Compiler {}
 
-type LinkageModule = JITModule;
+type LinkageModule = BpfModule;
 
 /// Runtime environment for the compiled function
 pub struct Runtime<'a> {
@@ -41,13 +42,12 @@ impl Compiler {
         info: &ProgramInfo,
         runtime: &Runtime,
     ) -> Result<(FuncId, LinkageModule), ModuleError> {
-        let builder = JITBuilder::new(cranelift_module::default_libcall_names());
-        let mut module = JITModule::new(builder.unwrap());
+        let mut module = BpfModule::new().map_err(|e| ModuleError::Backend(e.into()))?;
 
         assert_eq!(info.functions.len(), 1);
 
         let mut context = Context::new();
-        self.function_signature(&mut context);
+        context.func.signature = module.signature().clone();
         let sig = context.func.signature.clone();
         let sig_ref = context.func.import_signature(sig);
         let mut builder_context = FunctionBuilderContext::new();
@@ -507,17 +507,6 @@ impl Compiler {
         registers
     }
 
-    fn function_signature(&self, context: &mut Context) {
-        let sig = &mut context.func.signature;
-        sig.params.clear();
-        sig.returns.clear();
-
-        sig.returns.push(AbiParam::new(I64));
-        for _ in 0..5 {
-            sig.params.push(AbiParam::new(I64));
-        }
-    }
-
     fn get_block_range(
         &self,
         code: &[u64],
@@ -551,6 +540,7 @@ static mut INJECTED: u64 = 0;
 
 #[cfg(test)]
 fn println_tester(r1: u64, r2: u64, r3: u64, r4: u64, r5: u64) -> u64 {
+    extern crate std;
     let time = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap();
@@ -566,6 +556,7 @@ fn nop(_: u64, _: u64, _: u64, _: u64, _: u64) -> u64 {
 
 #[test]
 fn test_some() {
+    extern crate std;
     if std::env::var(BPF_CONF_RUNNER).is_err() {
         std::env::set_var(
             BPF_CONF_RUNNER,
@@ -614,8 +605,10 @@ exit",
             },
         )
         .unwrap();
-    let entry = module.get_finalized_function(main);
-    let main_fn = unsafe { to_ebpf_function(entry) };
+    let entry = module.get_finalized_function(main).unwrap();
+    use llvm_util::conformance::copy_to_executable_memory;
+    let exec = copy_to_executable_memory(entry);
+    let main_fn = unsafe { to_ebpf_function(exec.as_ptr()) };
 
     let mut i = 137u32;
     for _ in 0..1000 {

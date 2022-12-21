@@ -87,7 +87,10 @@ fn test_compiler_conformance() {
                 },
             )
             .unwrap();
-        let main_func = unsafe { to_ebpf_function(module.get_finalized_function(main)) };
+        let entry = module.get_finalized_function(main).unwrap();
+        use llvm_util::conformance::copy_to_executable_memory;
+        let exec = copy_to_executable_memory(entry);
+        let main_func = unsafe { to_ebpf_function(exec.as_ptr()) };
         assert_eq!(
             main_func(
                 data.memory.as_ptr() as u64,

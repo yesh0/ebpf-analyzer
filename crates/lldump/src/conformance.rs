@@ -8,6 +8,8 @@ use std::{
     str::from_utf8,
 };
 
+use mapr::{MmapMut, Mmap};
+
 /// Wrapper for bpf_conformance debug output
 pub struct ConformanceData {
     pub name: String,
@@ -121,4 +123,13 @@ pub fn for_all_conformance_data(dir: &str) -> io::Result<Vec<ConformanceData>> {
         .iter()
         .map(|entry| get_conformance_data(entry.path().to_str().unwrap()).unwrap())
         .collect())
+}
+
+/// Copies the code into an executable [Mmap]
+pub fn copy_to_executable_memory((code, alignment): (&[u8], u32)) -> Mmap {
+    let mut mmap_mut = MmapMut::map_anon(code.len()).unwrap();
+    mmap_mut.copy_from_slice(code);
+    let mmap = mmap_mut.make_exec().unwrap();
+    assert_eq!(0, mmap.as_ptr() as usize % alignment as usize);
+    mmap
 }
