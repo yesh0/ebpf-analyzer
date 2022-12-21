@@ -1,17 +1,20 @@
 //! Implements a `no_std` [Module].
 
+use core::ptr::write_unaligned;
+
 use alloc::{boxed::Box, string::ToString, vec::Vec};
 use anyhow::anyhow;
 use cranelift_codegen::{
+    binemit::Reloc::*,
     entity::SecondaryMap,
     ir::{types::I64, AbiParam, Function, Signature},
     isa::{self, CallConv, LookupError, TargetIsa},
     settings::{self, Configurable},
-    CompiledCode, Context, MachReloc,
+    CodegenError, CompiledCode, Context, MachReloc,
 };
 use cranelift_module::{
     DataContext, DataId, FuncId, Linkage, Module, ModuleCompiledFunction, ModuleDeclarations,
-    ModuleError, ModuleResult,
+    ModuleError, ModuleReloc, ModuleResult,
 };
 use target_lexicon::Triple;
 
@@ -19,12 +22,12 @@ use target_lexicon::Triple;
 #[derive(Clone)]
 struct FunctionDefinition {
     alignment: u32,
-    relocations: Vec<MachReloc>,
+    relocations: Vec<ModuleReloc>,
     data: Vec<u8>,
 }
 
-impl From<&CompiledCode> for FunctionDefinition {
-    fn from(compiled: &CompiledCode) -> Self {
+impl FunctionDefinition {
+    fn from(compiled: &CompiledCode, func: &Function) -> Self {
         let mut definition = Self {
             alignment: compiled.alignment,
             relocations: Vec::new(),
@@ -37,7 +40,9 @@ impl From<&CompiledCode> for FunctionDefinition {
         let relocs = compiled.buffer.relocs();
         definition.relocations.reserve(relocs.len());
         for relocation in relocs {
-            definition.relocations.push(relocation.clone());
+            definition
+                .relocations
+                .push(ModuleReloc::from_mach_reloc(relocation, func));
         }
         definition
     }
@@ -49,6 +54,7 @@ pub struct BpfModule {
     declarations: ModuleDeclarations,
     definitions: SecondaryMap<FuncId, Option<FunctionDefinition>>,
     signature: Signature,
+    binary: Option<(Vec<u8>, u32)>,
 }
 
 impl BpfModule {
@@ -79,6 +85,7 @@ impl BpfModule {
                 returns: alloc::vec![value],
                 call_conv: CallConv::SystemV,
             },
+            binary: None,
         })
     }
 
@@ -90,31 +97,83 @@ impl BpfModule {
     /// Links between defined functions into a raw binary
     ///
     /// Currently no relocation is supported, so only one function is allowed.
-    pub(crate) fn finalize_definitions(&self) -> ModuleResult<()> {
-        if self.declarations.get_functions().count() != 1 {
-            return Err(ModuleError::Backend(anyhow!(
-                "Currently multiple functions are not supported"
-            )));
-        }
+    pub(crate) fn finalize_definitions(&mut self) -> ModuleResult<()> {
+        let mut data: Vec<u8> = Vec::new();
+        let mut size = 0usize;
+        let mut max_alignment = 1;
+        let mut addresses: SecondaryMap<FuncId, usize> = SecondaryMap::new();
         for (id, _) in self.declarations.get_functions() {
             if let Some(definition) = &self.definitions[id] {
-                if !definition.relocations.is_empty() {
-                    return Err(ModuleError::Backend(anyhow!(
-                        "Relocations not supported for now"
-                    )));
+                max_alignment = max_alignment.max(definition.alignment);
+                let misaligned = size % definition.alignment as usize;
+                if misaligned != 0 {
+                    size += definition.alignment as usize - misaligned;
                 }
+                addresses[id] = size;
+                size += definition.data.len();
             } else {
                 return Err(ModuleError::Backend(anyhow!("Functions not fully defined")));
             }
         }
+        data.reserve(size);
+        for (id, _) in self.declarations.get_functions() {
+            if let Some(definition) = &self.definitions[id] {
+                let misaligned = data.len() % definition.alignment as usize;
+                if misaligned != 0 {
+                    data.resize((definition.alignment as usize - misaligned) + data.len(), 0);
+                }
+                let base = data.len();
+                data.extend(&definition.data);
+
+                for relocation in &definition.relocations {
+                    match relocation.kind {
+                        Abs4 => todo!(),
+                        Abs8 => todo!(),
+                        X86PCRel4 => todo!(),
+                        X86CallPCRel4 => {
+                            let address = addresses[FuncId::from_name(&relocation.name)];
+                            let at = relocation.offset as usize + base;
+                            let relative = address.wrapping_sub(at) as i64;
+                            let fixed = i32::try_from(relative + relocation.addend).unwrap();
+                            unsafe {
+                                write_unaligned(data.as_mut_ptr().add(at) as *mut i32, fixed)
+                            };
+                        }
+                        Arm32Call => todo!(),
+                        Arm64Call => todo!(),
+                        S390xPCRel32Dbl => todo!(),
+                        RiscvCall => todo!(),
+
+                        X86CallPLTRel4
+                        | X86GOTPCRel4
+                        | X86SecRel
+                        | S390xPLTRel32Dbl
+                        | ElfX86_64TlsGd
+                        | MachOX86_64Tlv
+                        | S390xTlsGd64
+                        | S390xTlsGdCall
+                        | Aarch64TlsGdAdrPage21
+                        | Aarch64TlsGdAddLo12Nc => {
+                            return Err(ModuleError::Compilation(CodegenError::Unsupported(
+                                "Unsupported relocation".to_string(),
+                            )))
+                        }
+                    }
+                }
+            }
+        }
+        self.binary.replace((data, max_alignment));
         Ok(())
     }
 
     /// Returns `Some(&code, alignment)` if the function is defined
     pub fn get_finalized_function(&self, main: FuncId) -> Option<(&[u8], u32)> {
-        self.definitions[main]
-            .as_ref()
-            .map(|definition| (&definition.data as &[u8], definition.alignment))
+        if main.as_u32() == 0 {
+            if let Some(ref bin) = self.binary {
+                return Some((&bin.0, bin.1));
+            }
+        }
+        None
     }
 }
 
@@ -182,8 +241,10 @@ impl Module for BpfModule {
             ));
         }
 
-        let res = ctx.compile(self.isa.as_ref())?;
-        let definition = FunctionDefinition::from(res);
+        let _ = ctx.compile(self.isa.as_ref())?;
+        // Work-around multipe borrows
+        let res = ctx.compiled_code().unwrap();
+        let definition = FunctionDefinition::from(res, &ctx.func);
         let size = definition.data.len() as u32;
         self.definitions[func] = Some(definition);
         Ok(ModuleCompiledFunction { size })

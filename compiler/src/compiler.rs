@@ -1,11 +1,11 @@
 //! An eBPF assembler using Cranelift
 
-use alloc::{vec::Vec, string::ToString};
+use alloc::{string::ToString, vec::Vec};
 use cranelift_codegen::{
     entity::EntityRef,
     ir::{
-        condcodes::IntCC, types::*, Block, Endianness, InstBuilder, MemFlags, Signature,
-        StackSlotData, StackSlotKind, UserFuncName, AtomicRmwOp,
+        condcodes::IntCC, types::*, AtomicRmwOp, Block, Endianness, InstBuilder, MemFlags,
+        Signature, StackSlotData, StackSlotKind, UserFuncName,
     },
     Context,
 };
@@ -44,16 +44,16 @@ impl Compiler {
     ) -> Result<(FuncId, LinkageModule), ModuleError> {
         let mut module = BpfModule::new().map_err(|e| ModuleError::Backend(e.into()))?;
 
-        assert_eq!(info.functions.len(), 1);
-
         let mut context = Context::new();
-        context.func.signature = module.signature().clone();
-        let sig = context.func.signature.clone();
-        let sig_ref = context.func.import_signature(sig);
         let mut builder_context = FunctionBuilderContext::new();
-        let functions = self.functions(info, &mut module, &context.func.signature)?;
+        let signature = module.signature().clone();
+        let functions = self.functions(info, &mut module, &signature)?;
 
         for (i, f) in info.functions.iter().enumerate() {
+            context.func.name = UserFuncName::user(0, i as u32);
+            context.func.signature = signature.clone();
+            let sig_ref = context.func.import_signature(signature.clone());
+
             let mut builder = FunctionBuilder::new(&mut context.func, &mut builder_context);
             let stack = builder
                 .create_sized_stack_slot(StackSlotData::new(StackSlotKind::ExplicitSlot, 512));
@@ -202,21 +202,32 @@ impl Compiler {
                         }
                         // BPF_CALL: Calls
                         [[BPF_JMP: JMP], [BPF_CALL: CALL]] => {
-                            if insn.src_reg() == 0 {
-                                let helper = insn.imm;
-                                let callee = builder.ins().iconst(
-                                    I64, runtime.helpers[helper as usize] as *const
-                                    HelperPointer as u64 as i64);
-                                let args = &[
-                                    builder.use_var(registers[1]),
-                                    builder.use_var(registers[2]),
-                                    builder.use_var(registers[3]),
-                                    builder.use_var(registers[4]),
-                                    builder.use_var(registers[5]),
-                                ];
-                                let inst = builder.ins().call_indirect(sig_ref, callee, args);
-                                let result = builder.func.dfg.first_result(inst);
-                                builder.def_var(registers[0], result);
+                            let args = &[
+                                builder.use_var(registers[1]),
+                                builder.use_var(registers[2]),
+                                builder.use_var(registers[3]),
+                                builder.use_var(registers[4]),
+                                builder.use_var(registers[5]),
+                            ];
+                            match insn.src_reg() {
+                                BPF_CALL_HELPER => {
+                                    let helper = insn.imm;
+                                    let callee = builder.ins().iconst(
+                                        I64, runtime.helpers[helper as usize] as *const
+                                        HelperPointer as u64 as i64);
+                                    let inst = builder.ins().call_indirect(sig_ref, callee, args);
+                                    let result = builder.inst_results(inst)[0];
+                                    builder.def_var(registers[0], result);
+                                }
+                                BPF_CALL_PSEUDO => {
+                                    let offset = pc.wrapping_add_signed(insn.imm as isize);
+                                    let callee = info.functions.iter().position(|f| f.block_starts[0] == offset).unwrap();
+                                    let local_callee = module.declare_func_in_func(functions[callee], builder.func);
+                                    let call = builder.ins().call(local_callee, args);
+                                    let result = builder.inst_results(call)[0];
+                                    builder.def_var(registers[0], result);
+                                }
+                                _ => panic!("Unsupported call")
                             }
                         }
                         // BPF_JA: Unconditional jump
@@ -455,8 +466,8 @@ impl Compiler {
 
     fn get_branch_info(&self, info: &FunctionBlock, i: usize) -> (usize, usize) {
         let targets = &info.from[i];
-        assert_eq!(targets.len(), 2);
-        assert!(targets.contains(&(i + 1)));
+        debug_assert_eq!(targets.len(), 2);
+        debug_assert!(targets.contains(&(i + 1)));
         let to = if targets[0] == i + 1 {
             targets[1]
         } else {
@@ -471,8 +482,6 @@ impl Compiler {
         module: &mut LinkageModule,
         signature: &Signature,
     ) -> Result<Vec<FuncId>, ModuleError> {
-        assert_eq!(info.functions.len(), 1);
-
         let mut functions: Vec<FuncId> = Vec::new();
         functions.reserve(info.functions.len());
 

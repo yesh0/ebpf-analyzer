@@ -13,29 +13,32 @@ use ebpf_analyzer::{
     },
 };
 use ebpf_compiler::compiler::{to_ebpf_function, Compiler, Runtime};
-use llvm_util::conformance::for_all_conformance_data;
+use llvm_util::conformance::{for_all_conformance_data, get_conformance_data, ConformanceData};
 
 #[test]
 fn test_compiler_conformance() {
-    const UNSUPPORTED: &[&str] = &[
-        // Stack and local call support
-        "call-stack",
-        "call_local",
-        "stack",
-    ];
     // If you are to debug this in an IDE (e.g., VS Code),
     // you might want to change the path to "./analyzer/tests/conformance".
     // Or probably you can somehow configure the debugger. I dunno.
     for data in for_all_conformance_data("../analyzer/tests/conformance").unwrap() {
         if !data.error.is_empty()
             || data.name.contains("-fail")
-            || UNSUPPORTED
-                .iter()
-                .any(|unsupported| data.name.contains(unsupported))
         {
             std::println!("Unsupported {}", data.name);
-            continue;
+        } else {
+            test_with_conformance_data(&data);
         }
+    }
+}
+
+#[test]
+fn test_local_call() {
+    let data = get_conformance_data("../analyzer/tests/conformance/call_local.data.txt").unwrap();
+    test_with_conformance_data(&data);
+}
+
+fn test_with_conformance_data(data: &ConformanceData) {
+    if data.error.is_empty() {
         std::println!("Running {}", data.name);
         let info = Analyzer::analyze(
             &data.code,
