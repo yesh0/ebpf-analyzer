@@ -10,6 +10,7 @@ license.workspace = true
 default = ["atomic32", "atomic64"]
 atomic32 = ["ebpf-atomic/atomic32"]
 atomic64 = ["ebpf-atomic/atomic64"]
+nightly = ["ebpf-atomic/nightly"]
 
 [dependencies]
 ebpf-atomic = { path = "./../crates/atomic", optional = true }

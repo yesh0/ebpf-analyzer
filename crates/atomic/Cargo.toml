@@ -9,3 +9,4 @@ license.workspace = true
 default = ["atomic32", "atomic64"]
 atomic32 = []
 atomic64 = []
+nightly = []

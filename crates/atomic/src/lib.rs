@@ -7,6 +7,7 @@
 
 #![no_std]
 #![feature(atomic_from_mut)]
+#![cfg_attr(feature = "nightly", feature(mixed_integer_ops))]
 #![forbid(missing_docs)]
 
 use core::{num::Wrapping, sync::atomic::Ordering};
@@ -26,27 +27,27 @@ where
     Self: Sized,
 {
     /// Wrapper for `fetch_add`
-    /// 
+    ///
     /// - `size`: in bytes
     fn fetch_add(&self, offset: i16, rhs: &Self, size: usize) -> Result<Self, AtomicError>;
     /// Wrapper for `fetch_or`
-    /// 
+    ///
     /// - `size`: in bytes
     fn fetch_or(&self, offset: i16, rhs: &Self, size: usize) -> Result<Self, AtomicError>;
     /// Wrapper for `fetch_and`
-    /// 
+    ///
     /// - `size`: in bytes
     fn fetch_and(&self, offset: i16, rhs: &Self, size: usize) -> Result<Self, AtomicError>;
     /// Wrapper for `fetch_xor`
-    /// 
+    ///
     /// - `size`: in bytes
     fn fetch_xor(&self, offset: i16, rhs: &Self, size: usize) -> Result<Self, AtomicError>;
     /// Wrapper for `fetch_swap`
-    /// 
+    ///
     /// - `size`: in bytes
     fn swap(&self, offset: i16, rhs: &Self, size: usize) -> Result<Self, AtomicError>;
     /// Wrapper for `compare_exchange`
-    /// 
+    ///
     /// - `size`: in bytes
     fn compare_exchange(
         &self,

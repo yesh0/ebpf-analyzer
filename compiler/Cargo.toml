@@ -6,6 +6,11 @@ edition.workspace = true
 repository.workspace = true
 license.workspace = true
 
+[features]
+default = []
+nightly = []
+
+
 [dependencies]
 ebpf-analyzer = { path = "../analyzer" }
 ebpf-macros = { path = "../crates/macros" }
