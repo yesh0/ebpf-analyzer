@@ -27,7 +27,7 @@ jobs:
       - name: Build
         run: cargo build --verbose
       - name: Clippy
-        run: cargo clippy --all --all-features
+        run: cargo clippy --all --all-features -- -A stable-features
       - name: Run tests
         run: cargo test --workspace --verbose
         env:
