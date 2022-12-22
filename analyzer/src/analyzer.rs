@@ -25,10 +25,79 @@ pub struct MapInfo {
 /// Configuration: how the analyzer checks the code
 pub struct AnalyzerConfig<'a> {
     /// Helper function calls used by the function
+    ///
+    /// An updating example lies here: [crate::spec::proto::helpers::HELPERS].
     pub helpers: StaticHelpers,
-    /// How a VM should be setup
+    /// How a [BranchState] [Vm] should be setup
+    ///
+    /// # Usage
+    ///
+    /// In order to setup the VM correctly, you will need to have an understanding
+    /// of the eBPF spec, the signature of the target eBPF program
+    /// (what kinds of arguments it expects), and how to represent them with this library.
+    ///
+    /// ## Representation
+    ///
+    /// We provides two representations: [crate::track::scalar::Scalar] and
+    /// [crate::track::pointer::Pointer].
+    ///
+    /// ### Scalars
+    ///
+    /// Scalars are easier:
+    /// - Use these methods to create constant values:
+    ///   - [crate::interpreter::value::VmScalar::constant64]
+    ///   - [crate::interpreter::value::VmScalar::constanti32]
+    ///   - [crate::interpreter::value::VmScalar::constantu32]
+    /// - Use this methods to represent an unknown value:
+    ///   - [crate::track::scalar::Scalar::unknown]
+    ///
+    /// ### Pointers
+    ///
+    /// Pointers need to know about the underlying [crate::track::pointees::MemoryRegion].
+    ///
+    /// You will need to create a representation of that region,
+    /// wrap that into a `Rc<RefCell<...>>` with probably [crate::track::pointees::pointed],
+    /// and then create a pointer for it.
+    ///
+    /// There are two extra things:
+    /// - Memory regions are resources. If some helper functions invalidates (releases)
+    ///   resources, we forbid the program from using the pointers any more.
+    ///   You need to use [crate::branch::vm::BranchState::add_external_resource]
+    ///   or [crate::branch::vm::BranchState::add_allocated_resource] to mark every resource
+    ///   the eBPF program uses.
+    /// - Pointers have their own attributes: some are nullable, some are read-only or
+    ///   or maybe even write-only. You may create one with
+    ///   [crate::track::pointer::Pointer::nrwa] or similar methods or
+    ///   [crate::track::pointer::Pointer::new] for more options.
+    ///
+    /// # Examples
     ///
     /// Users may inject parameters here.
+    ///
+    /// Imagine you want to validate a KProbes eBPF program, which accepts a context pointer
+    /// as its parameter.
+    ///
+    /// ```
+    /// use ebpf_analyzer::analyzer::AnalyzerConfig;
+    /// use ebpf_analyzer::interpreter::vm::Vm;
+    /// use ebpf_analyzer::track::pointer::Pointer;
+    /// use ebpf_analyzer::track::pointees::pointed;
+    /// use ebpf_analyzer::track::pointees::dyn_region::DynamicRegion;
+    /// # const CONTEXT_STRUCT_SIZE: usize = 16;
+    /// let mut config = AnalyzerConfig::default();
+    ///
+    /// config.setup = &|vm| {
+    ///     // Create a representation of a memory region of CONTEXT_STRUCT_SIZE
+    ///     let argument = pointed(DynamicRegion::new(CONTEXT_STRUCT_SIZE));
+    ///     // The argument is a pointer to that region
+    ///     let ptr = Pointer::nrwa(argument.clone());
+    ///     // The region is always available, and never gets deallocated
+    ///     vm.add_external_resource(argument);
+    ///     // The argument is passed into the program via the register `R1` as per the spec
+    ///     *vm.reg(1) = ptr.into();
+    /// };
+    /// # assert!(ebpf_analyzer::analyzer::Analyzer::analyze(&[ebpf_consts::BPF_JMP_EXIT as u64], &config).is_err());
+    /// ```
     pub setup: &'a dyn Fn(&mut BranchState),
     /// Maximum processable instruction count
     ///

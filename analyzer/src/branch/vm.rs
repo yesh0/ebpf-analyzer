@@ -88,7 +88,7 @@ impl BranchState {
             registers: Default::default(),
             temp_reg: Scalar::unknown().into(),
             call_trace: Vec::new(),
-            stack: Rc::new(RefCell::new(StackRegion::new())),
+            stack: pointed(StackRegion::new()),
             resources: ResourceTracker::default(),
             regions: alloc::vec![EmptyRegion::instance()],
             helpers,
