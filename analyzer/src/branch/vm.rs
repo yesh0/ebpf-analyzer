@@ -8,7 +8,7 @@ use core::{
     fmt::Debug,
 };
 
-use alloc::{rc::Rc, vec::Vec};
+use alloc::{rc::Rc, vec::Vec, string::{String, ToString}};
 use ebpf_consts::{READABLE_REGISTER_COUNT, WRITABLE_REGISTER_COUNT, BPF_IMM64_MAP_FD};
 
 use crate::{
@@ -41,7 +41,7 @@ pub type StaticHelpers = &'static [&'static dyn VerifiableCall<CheckedValue, Bra
 struct InnerState {
     pc: usize,
     ids: IdGen,
-    invalid: Option<&'static str>,
+    invalid: Vec<String>,
     registers: [CheckedValue; 11],
     /// A temporary value to allow borrowing the "same" register
     /// for instructions like `mul r1, r1`
@@ -84,7 +84,7 @@ impl BranchState {
         let mut state = InnerState {
             pc: 0,
             ids: IdGen::default(),
-            invalid: None,
+            invalid: Vec::new(),
             registers: Default::default(),
             temp_reg: Scalar::unknown().into(),
             call_trace: Vec::new(),
@@ -142,7 +142,8 @@ impl BranchState {
         }
     }
 
-    /// Adds the region and sets its id
+    /// Starts tracking this resource,
+    /// marking it as a supplied resource, without the need to release it manually.
     pub fn add_external_resource(&mut self, region: Pointee) {
         let inner = self.inner_mut();
         let id = inner.resources.external(&mut inner.ids);
@@ -150,8 +151,8 @@ impl BranchState {
         inner.regions.push(region);
     }
 
-    /// Removes the region
-    fn remove_external_resource(&mut self, id: Id) {
+    /// Marks an external resource as unavailable.
+    pub fn remove_external_resource(&mut self, id: Id) {
         let inner = self.inner_mut();
         if inner.resources.invalidate_external(id) {
             // TODO: Invalidate
@@ -160,7 +161,8 @@ impl BranchState {
         }
     }
 
-    /// Adds the region and sets its id
+    /// Starts tracking this resource,
+    /// marking it as a program-allocated resource, needed to get released.
     pub fn add_allocated_resource(&mut self, region: Pointee) {
         let inner = self.inner_mut();
         let id = inner.resources.allocate(&mut inner.ids);
@@ -168,7 +170,7 @@ impl BranchState {
         inner.regions.push(region);
     }
 
-    /// Deallocates a resource
+    /// Marks an allocated resource as released.
     pub fn deallocate_resource(&mut self, id: Id) {
         let inner = self.inner_mut();
         if inner.resources.deallocate(id) {
@@ -207,6 +209,11 @@ impl BranchState {
         }
     }
 
+    /// Gets the error messages
+    pub fn messages(&self) -> &[String] {
+        &self.inner().invalid
+    }
+
     fn inner(&self) -> &InnerState {
         safe_ref_unsafe_cell(&self.0)
     }
@@ -231,7 +238,7 @@ impl Clone for BranchState {
         let mut another = Self(UnsafeCell::new(InnerState {
             pc: inner.pc,
             ids: IdGen::default(),
-            invalid: None,
+            invalid: Vec::new(),
             registers: Default::default(),
             temp_reg: inner.temp_reg.clone(),
             call_trace: inner.call_trace.clone(),
@@ -277,12 +284,12 @@ impl Vm<CheckedValue> for BranchState {
     fn invalidate(&self, message: &'static str) {
         unsafe {
             // Safe since we are single-threaded and only invalidating things
-            (*self.0.get()).invalid = Some(message)
+            (*self.0.get()).invalid.push(message.to_string());
         }
     }
 
     fn is_valid(&self) -> bool {
-        self.inner().invalid.is_none() || !self.inner().temp_reg.is_valid()
+        self.inner().invalid.is_empty() || !self.inner().temp_reg.is_valid()
     }
 
     fn reg(&mut self, i: u8) -> &mut CheckedValue {
@@ -427,8 +434,8 @@ impl Vm<CheckedValue> for BranchState {
 impl Debug for BranchState {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.write_fmt(format_args!("BranchState {{\n"))?;
-        if let Some(message) = self.inner().invalid {
-            f.write_fmt(format_args!("  msg:   {message}\n"))?;
+        if !self.inner().invalid.is_empty() {
+            f.write_fmt(format_args!("  msg:   {:?}\n", self.inner().invalid))?;
         }
         f.write_fmt(format_args!("  pc:    {}\n", self.inner().pc))?;
         f.write_fmt(format_args!("  regs:  {:?}\n", self.inner().registers))?;

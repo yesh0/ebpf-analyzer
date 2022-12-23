@@ -1,21 +1,25 @@
 //! This module contains implementations to keep track of memory structures.
 
-use core::{cell::RefCell, fmt::Debug, any::Any};
+use core::{any::Any, cell::RefCell, fmt::Debug};
 
 use alloc::rc::Rc;
 
-use crate::branch::id::Id;
+use crate::{
+    branch::{id::Id, vm::BranchState},
+    interpreter::vm::Vm,
+    spec::proto::IllegalFunctionCall,
+};
 
 use self::dyn_region::DynamicRegion;
 
-use super::{TrackError, scalar::Scalar, TrackedValue};
+use super::{scalar::Scalar, TrackError, TrackedValue};
 
+pub mod dyn_region;
+pub mod empty_region;
+pub mod map_resource;
+pub mod simple_resource;
 pub mod stack_region;
 pub mod struct_region;
-pub mod empty_region;
-pub mod dyn_region;
-pub mod simple_resource;
-pub mod map_resource;
 
 /// Type id for user-defined types
 ///
@@ -128,4 +132,29 @@ fn is_access_in_range(
 /// Wraps something into [Pointee]
 pub fn pointed<T: MemoryRegion + 'static>(region: T) -> Pointee {
     Rc::new(RefCell::new(region)) as Pointee
+}
+
+/// Retrieves inner resource reference for [InnerRegion::Any] from a register
+pub fn with_resource<R, Res: MemoryRegion + 'static>(
+    t: AnyType,
+    reg: u8,
+    vm: &mut BranchState,
+    action: fn(&mut Res, &mut BranchState) -> R,
+) -> Result<R, IllegalFunctionCall> {
+    if !vm.is_invalid_resource(reg) {
+        if let Some(TrackedValue::Pointer(p)) = vm.reg(reg).inner_mut() {
+            if p.is_readable() && p.non_null() && p.is_mutable() {
+                let pointed = p.get_pointing_region();
+                let mut region = pointed.borrow_mut();
+                if let InnerRegion::Any((type_id, reg)) = region.inner() {
+                    if type_id == t {
+                        if let Some(res) = reg.downcast_mut::<Res>() {
+                            return Ok(action(res, vm));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Err(IllegalFunctionCall::TypeMismatch)
 }

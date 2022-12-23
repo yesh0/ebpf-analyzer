@@ -1,15 +1,18 @@
 //! A simplistic map resource
 
+use alloc::vec::Vec;
+
 use crate::{
     branch::{checked_value::CheckedValue, id::Id, vm::BranchState},
-    interpreter::vm::Vm,
     spec::proto::{
         ArgumentType, IllegalFunctionCall, ReturnType, StaticFunctionCall, VerifiableCall,
     },
     track::{pointer::Pointer, scalar::Scalar, TrackError, TrackedValue},
 };
 
-use super::{dyn_region::DynamicRegion, pointed, InnerRegion, MemoryRegion, Pointee, SafeClone, AnyType};
+use super::{
+    dyn_region::DynamicRegion, pointed, AnyType, MemoryRegion, Pointee, SafeClone, with_resource,
+};
 
 /// The type id for maps
 pub const MAP_TYPE_ID: AnyType = -1i32;
@@ -22,6 +25,7 @@ pub struct SimpleMap {
     id: u32,
     key_size: usize,
     value_size: usize,
+    values: Vec<Pointee>,
 }
 
 impl SimpleMap {
@@ -33,6 +37,7 @@ impl SimpleMap {
             id: 0,
             key_size,
             value_size,
+            values: Vec::new(),
         }
     }
 
@@ -47,10 +52,18 @@ impl SimpleMap {
     }
 
     /// Returns a region of a map value (nullable, readable, writable, allowing arithmetic)
-    pub fn get_value(value_size: usize, vm: &mut BranchState) -> Pointer {
-        let value = pointed(DynamicRegion::new(value_size));
+    pub fn get_value(&mut self, vm: &mut BranchState) -> Pointer {
+        let value = pointed(DynamicRegion::new(self.value_size));
         vm.add_external_resource(value.clone());
+        self.values.push(value.clone());
         Pointer::rwa(value)
+    }
+
+    /// Invalidates all value regions in this map
+    pub fn invalidate_values(&mut self, vm: &mut BranchState) {
+        while let Some(value) = self.values.pop() {
+            vm.remove_external_resource(value.borrow_mut().get_id());
+        }
     }
 }
 
@@ -90,21 +103,11 @@ impl MemoryRegion for SimpleMap {
 }
 
 /// Retrieves map info from `r1`
-fn get_map_info(vm: &mut BranchState) -> Result<(usize, usize), IllegalFunctionCall> {
-    if !vm.is_invalid_resource(1) {
-        if let Some(TrackedValue::Pointer(p)) = vm.reg(1).inner_mut() {
-            if p.is_readable() && p.non_null() && p.is_mutable() {
-                let pointed = p.get_pointing_region();
-                let mut region = pointed.borrow_mut();
-                if let InnerRegion::Any((MAP_TYPE_ID, map)) = region.inner() {
-                    if let Some(map) = map.downcast_ref::<SimpleMap>() {
-                        return Ok((map.key_size, map.value_size));
-                    }
-                }
-            }
-        }
-    }
-    Err(IllegalFunctionCall::TypeMismatch)
+fn for_map<T>(
+    vm: &mut BranchState,
+    action: fn(&mut SimpleMap, &mut BranchState) -> T,
+) -> Result<T, IllegalFunctionCall> {
+    with_resource(MAP_TYPE_ID, 1, vm, action)
 }
 
 /// bpf_map_update_elem
@@ -112,7 +115,10 @@ pub struct MapUpdateCall;
 
 impl VerifiableCall<CheckedValue, BranchState> for MapUpdateCall {
     fn call(&self, vm: &mut BranchState) -> Result<CheckedValue, IllegalFunctionCall> {
-        let (key_size, value_size) = get_map_info(vm)?;
+        let (key_size, value_size) = for_map(vm, |map, vm| {
+            map.invalidate_values(vm);
+            (map.key_size, map.value_size)
+        })?;
         StaticFunctionCall::new(
             [
                 ArgumentType::Any,
@@ -132,8 +138,7 @@ pub struct MapLookupCall;
 
 impl VerifiableCall<CheckedValue, BranchState> for MapLookupCall {
     fn call(&self, vm: &mut BranchState) -> Result<CheckedValue, IllegalFunctionCall> {
-        let (key_size, value_size) = get_map_info(vm)?;
-        let value = SimpleMap::get_value(value_size, vm);
+        let (key_size, value) = for_map(vm, |map, vm| (map.key_size, map.get_value(vm)))?;
         StaticFunctionCall::new(
             [
                 ArgumentType::Any,
@@ -154,7 +159,10 @@ pub struct MapDeleteCall;
 
 impl VerifiableCall<CheckedValue, BranchState> for MapDeleteCall {
     fn call(&self, vm: &mut BranchState) -> Result<CheckedValue, IllegalFunctionCall> {
-        let (key_size, _) = get_map_info(vm)?;
+        let key_size = for_map(vm, |map, vm| {
+            map.invalidate_values(vm);
+            map.key_size
+        })?;
         StaticFunctionCall::new(
             [
                 ArgumentType::Any,
@@ -169,15 +177,21 @@ impl VerifiableCall<CheckedValue, BranchState> for MapDeleteCall {
     }
 }
 
+#[cfg(test)]
+fn get_map_info(vm: &mut BranchState) -> Result<(usize, usize), IllegalFunctionCall> {
+    for_map(vm, |map, _| (map.key_size, map.value_size))
+}
+
 #[test]
 fn test_map_helpers() {
     use alloc::vec::Vec;
+    use crate::interpreter::vm::Vm;
     let map = pointed(SimpleMap::new(8, 8));
     let mut vm = BranchState::new(&[], Vec::new());
     vm.add_external_resource(map.clone());
 
     // Test lookup calls
-    let lookup = MapLookupCall{};
+    let lookup = MapLookupCall {};
 
     assert!(lookup.call(&mut vm).is_err());
 
@@ -203,7 +217,7 @@ fn test_map_helpers() {
     match value.inner_mut() {
         Some(TrackedValue::Pointer(ref mut p)) => {
             p.set_non_null();
-        },
+        }
         _ => panic!(),
     }
 
@@ -221,7 +235,7 @@ fn test_map_helpers() {
     *vm.reg(1) = Pointer::nrwa(map.clone()).into();
 
     // Test map update
-    let update = MapUpdateCall{};
+    let update = MapUpdateCall {};
     assert!(update.call(&mut vm).is_err());
 
     *vm.reg(3) = vm.ro_reg(10).clone();
@@ -239,13 +253,19 @@ fn test_map_helpers() {
     assert!(unsafe { vm.reg(3).set_at(4, 4, &Scalar::constant64(0).into()) });
     let result = update.call(&mut vm);
     assert!(result.is_ok());
-    assert!(matches!(result.unwrap().inner(), Some(TrackedValue::Scalar(_))));
+    assert!(matches!(
+        result.unwrap().inner(),
+        Some(TrackedValue::Scalar(_))
+    ));
 
     // Test map delete
-    let delete = MapDeleteCall{};
+    let delete = MapDeleteCall {};
     let result = delete.call(&mut vm);
     assert!(result.is_ok());
-    assert!(matches!(result.unwrap().inner(), Some(TrackedValue::Scalar(_))));
+    assert!(matches!(
+        result.unwrap().inner(),
+        Some(TrackedValue::Scalar(_))
+    ));
 
     // No pointer leak is allowed
     assert!(unsafe { vm.reg(2).set_at(0, 8, &Pointer::rwa(map).into()) });

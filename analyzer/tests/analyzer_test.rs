@@ -1,5 +1,3 @@
-use std::{cell::RefCell, rc::Rc};
-
 use ebpf_analyzer::{
     analyzer::{Analyzer, AnalyzerConfig, MapInfo, VerificationError},
     branch::{checked_value::CheckedValue, vm::BranchState},
@@ -9,7 +7,7 @@ use ebpf_analyzer::{
         VerifiableCall,
     },
     track::{
-        pointees::{dyn_region::DynamicRegion, struct_region::StructRegion},
+        pointees::{dyn_region::DynamicRegion, pointed, struct_region::StructRegion},
         pointer::{Pointer, PointerAttributes},
         scalar::Scalar,
         TrackedValue,
@@ -105,7 +103,7 @@ const HELPERS: AnalyzerConfig = AnalyzerConfig {
         ),
     ],
     setup: &|vm| {
-        let region = Rc::new(RefCell::new(DynamicRegion::default()));
+        let region = pointed(DynamicRegion::default());
         vm.add_external_resource(region.clone());
         let pointer = Pointer::new(
             PointerAttributes::NON_NULL
@@ -114,10 +112,10 @@ const HELPERS: AnalyzerConfig = AnalyzerConfig {
             region.clone(),
         );
         let end = Pointer::end(region);
-        let context = Rc::new(RefCell::new(StructRegion::new(
+        let context = pointed(StructRegion::new(
             vec![pointer, end],
             &[1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2],
-        )));
+        ));
         vm.add_external_resource(context.clone());
         *vm.reg(1) = Pointer::new(
             PointerAttributes::NON_NULL | PointerAttributes::READABLE,
@@ -184,7 +182,10 @@ define_test!(
     test_printk_fail,
     "bpf-src/printk-fail.txt",
     Err(VerificationError::IllegalStateChange(branch)),
-    { std::println!("Captured: {branch:?}") }
+    {
+        std::println!("Captured: {branch:?}");
+        assert!(branch.borrow_mut().messages()[0].contains("Function call failed"));
+    }
 );
 
 const MAP_HELPERS: &AnalyzerConfig = &AnalyzerConfig {
@@ -208,5 +209,15 @@ define_test!(
     "bpf-src/map-test.txt",
     Ok(_),
     {},
+    MAP_HELPERS
+);
+define_test!(
+    test_map_helpers_fail,
+    "bpf-src/map-fail.txt",
+    Err(VerificationError::IllegalStateChange(branch)),
+    {
+        std::println!("Captured: {branch:?}");
+        assert!(branch.borrow_mut().messages()[0].contains("Function call failed"));
+    },
     MAP_HELPERS
 );
