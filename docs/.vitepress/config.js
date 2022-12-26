@@ -64,6 +64,7 @@ function sidebarGuide() {
         { text: 'ALU Operation Verification', link: '/verifier/arithmetic' },
         { text: 'JMP Operation Verification', link: '/verifier/conditional' },
         { text: 'Function Call Verification', link: '/verifier/functions' },
+        { text: 'Post-Processing', link: '/verifier/post-processing' },
         { text: 'Undecidability', link: '/verifier/undecidability' },
       ],
     },

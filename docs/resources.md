@@ -26,7 +26,7 @@ When reading lengthy code, an IDE really makes your life better.
 
 Personally I find `github.dev` satisfactory. For any GitHub URL, replacing `github.com` with `github.dev` does the job.
 :::
-  
+
 ## Kernel documentation
 
 ::: tip
@@ -56,6 +56,7 @@ Here is a non-exhaustive list, and you can always search for ones that suit your
 - [BPF and XDP Reference Guide - Cilium documentation](https://docs.cilium.io/en/latest/bpf/)
 - [A series of blog posts about BPF - Oracle Linux Blog](https://blogs.oracle.com/linux/post/bpf-application-development-and-libbpf)
 - [Libbpf: A Beginners Guide - ContainIQ](https://www.containiq.com/post/libbpf)
+- [Understanding struct \__sk_buff](https://medium.com/@c0ngwang/understanding-struct-sk-buff-730cf847a722): Talks about context access conversion
 
 ## eBPF programming
 

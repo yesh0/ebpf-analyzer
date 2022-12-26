@@ -105,7 +105,7 @@ This function does the following:
    ```
 
    Therefore, we can easily locate the boundaries of a function:
-   
+
    ```
    func1: // start of func1
        ...
@@ -181,6 +181,10 @@ Just calls `do_check_common`, which eventually calls [`do_check`](#do-check).
 Prepares a `struct bpf_verifier_state` and calls [`do_check`](#do-check).
 
 For subprogs with BTF info, it sets up the state according to the types of their arguments.
+
+### Post-processing
+
+See [post-processing](./post-processing.md).
 
 ## `do_check`
 
