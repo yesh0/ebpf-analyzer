@@ -1,10 +1,10 @@
-use proc_macro2::{Ident, Span, TokenStream, TokenTree};
+use proc_macro2::{Delimiter, Ident, Span, TokenStream, TokenTree};
 use quote::ToTokens;
 use syn::{
-    parenthesized,
-    parse::{Parse, ParseStream},
+    braced, bracketed, parenthesized,
+    parse::{Parse, ParseBuffer, ParseStream},
     punctuated::Punctuated,
-    LitInt, LitStr, Token,
+    token, LitInt, LitStr, Token,
 };
 
 use crate::parser::{Alias, Aliases};
@@ -91,6 +91,8 @@ pub enum Replacing {
     WithRaw(usize),
     /// A `#"...{}..."0` token, to be formatted with an ident
     WithFormatted(usize, String),
+    /// A groupsed block, e.g., `( #=2 )`
+    Grouped(Delimiter, CodeBlock),
 }
 
 /// Reads tokens, stopping before a '#' punct
@@ -99,13 +101,14 @@ fn parse_trees(code: &ParseStream) -> syn::Result<TokenStream> {
         let mut rest = *cursor;
         let mut stream = TokenStream::new();
         while let Some((tt, next)) = rest.token_tree() {
-            if let TokenTree::Punct(punct) = &tt {
-                if punct.as_char() == '#' {
-                    break;
+            match tt {
+                TokenTree::Group(_) => break,
+                TokenTree::Punct(punct) if punct.as_char() == '#' => break,
+                _ => {
+                    stream.extend(tt.to_token_stream());
+                    rest = next;
                 }
             }
-            stream.extend(tt.to_token_stream());
-            rest = next;
         }
         Ok((stream, rest))
     })
@@ -147,10 +150,28 @@ impl Parse for Replacing {
                 // Unprocessed hash
                 Replacing::None(hash.to_token_stream())
             }
+        } else if let Some((delimiter, stream)) = grouped(input)? {
+            Replacing::Grouped(delimiter, stream.parse()?)
         } else {
             Replacing::None(parse_trees(&input)?)
         })
     }
+}
+
+fn grouped(input: ParseStream) -> syn::Result<Option<(Delimiter, ParseBuffer)>> {
+    let content;
+    Ok(if input.peek(token::Brace) {
+        braced!(content in input);
+        Some((Delimiter::Brace, content))
+    } else if input.peek(token::Bracket) {
+        bracketed!(content in input);
+        Some((Delimiter::Bracket, content))
+    } else if input.peek(token::Paren) {
+        parenthesized!(content in input);
+        Some((Delimiter::Parenthesis, content))
+    } else {
+        return Ok(None);
+    })
 }
 
 /// A code block

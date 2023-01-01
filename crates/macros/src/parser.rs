@@ -19,7 +19,7 @@ pub struct OpcodeMatches {
     pub namespace: Namespace,
 }
 
-/// A match arm in the macro
+/// A match arm in the macro, e.g., `[[CONST: c]] => { 0 }`
 pub struct MatchArm {
     /// The `[[A: a, B: b], [X: x, Y: y]]` part in the arm. Empty if unconditional.
     pub combinations: Vec<Aliases>,
@@ -60,8 +60,9 @@ fn until_bracket(input: &ParseStream) -> syn::Result<Vec<Replacing>> {
     Ok(blocks)
 }
 
-impl Parse for OpcodeMatches {
-    fn parse(input: ParseStream) -> syn::Result<Self> {
+impl OpcodeMatches {
+    /// Parses the opcode part, e.g., `opcode as u8 in ebpf_consts`
+    fn parse_opcode(input: ParseStream) -> syn::Result<(Ident, Ident, Namespace)> {
         let value: Ident = input.parse()?;
         let value_type = if input.peek(Token!(as)) {
             let _: Token!(as) = input.parse()?;
@@ -77,16 +78,25 @@ impl Parse for OpcodeMatches {
             Namespace::default()
         };
         let _: Token!(,) = input.parse()?;
+        Ok((value, value_type, namespace))
+    }
+}
+
+impl Parse for OpcodeMatches {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let (value, value_type, namespace) = Self::parse_opcode(input)?;
         let mut arms: Vec<MatchArm> = Vec::new();
         let mut attribute: Option<TokenStream> = None;
         while !input.is_empty() {
             arms.push(if input.peek(token::Bracket) {
+                // Conditional arms
                 let mut arm: MatchArm = input.parse()?;
                 if let Some(attr) = attribute.take() {
                     arm.header.replace(attr);
                 }
                 arm
             } else if input.peek(Token!(#)) {
+                // Attributes for that branch, e.g., `#[cfg(test)]`
                 let hash: Token!(#) = input.parse()?;
                 let tree = input.step(|c| {
                     if let Some(i) = c.token_tree() {
@@ -105,6 +115,7 @@ impl Parse for OpcodeMatches {
                 }
                 continue;
             } else {
+                // Unconditional arms, e.g., `_ => 0,`
                 let mut code = until_bracket(&input)?;
                 if let Some(attr) = attribute.take() {
                     code.insert(0, Replacing::None(attr));

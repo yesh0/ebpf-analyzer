@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use proc_macro::TokenStream;
-use proc_macro2::{Ident, Literal, Span, TokenStream as TokenStream2};
+use proc_macro2::{Ident, Literal, Span, TokenStream as TokenStream2, Group};
 use quote::{quote, ToTokens, TokenStreamExt};
 
 use crate::{
@@ -155,6 +155,11 @@ fn construct_code(
                 if conditions.matches(enabled) {
                     construct_code(aliases, enabled, code, output);
                 }
+            }
+            Replacing::Grouped(delimiter, code) => {
+                let mut stream = TokenStream2::new();
+                construct_code(aliases, enabled, code, &mut stream);
+                Group::new(*delimiter, stream).to_tokens(output);
             }
         }
     }

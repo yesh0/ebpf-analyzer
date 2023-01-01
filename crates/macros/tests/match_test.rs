@@ -44,3 +44,26 @@ pub fn match_number(opcode: u8) -> u64 {
         }
     }
 }
+
+#[test]
+fn test_replacing_in_parenthesis() {
+    let opcode = 0u8;
+    let values = vec![1, 2, 3, 4];
+    let value = opcode_match! {
+        opcode as u8 in ebpf_consts,
+        [[BPF_ADD: "+"]] => {
+            // (1 + 2) * 3 -> 9
+            let value = (1 #=0 2) * 3;
+            // 9 + (10 + 10)
+            value + if values[1 #=0 2] == 4 {
+                10 #=0 10
+            } else {
+                0
+            }
+        }
+        _ => {
+            0
+        }
+    };
+    assert_eq!(value, 29);
+}
