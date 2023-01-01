@@ -11,5 +11,6 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
+homepage = "https://githubcom/yesh0/ebpf-analyzer"
 repository = "https://githubcom/yesh0/ebpf-analyzer"
 license = "MIT"
