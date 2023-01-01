@@ -1,4 +1,4 @@
-use ebpf_macros::opcode_match;
+use opcode_macros::opcode_match;
 use ebpf_consts::*;
 
 #[test]
@@ -16,11 +16,9 @@ pub fn match_number(opcode: u8) -> u64 {
         [[BPF_ALU: ALU, BPF_ALU64: ALU64], [BPF_X: X, BPF_K: K],
         [
             BPF_ADD: "+",
-            BPF_SUB: "-",
             BPF_AND: "&",
             BPF_OR : "|",
             BPF_XOR: "^",
-            BPF_MUL: "*",
             BPF_LSH: "<<",
             BPF_RSH: ">>",
          ]] => {
@@ -30,9 +28,10 @@ pub fn match_number(opcode: u8) -> u64 {
             #?((ALU)) let src = src as u32;        ##
             #?((ALU))
                 let dst = dst as u32;
-                #?(("<<")|(">>"))
-                    let src = src & 31;
-                ##
+            ##
+            #?(("<<")|(">>"))
+                let limit = #?((ALU)) 31 ## #?((ALU64)) 63 ##;
+                let src = src & limit;
             ##
             let res = dst #=2 src;
             let s = #2;

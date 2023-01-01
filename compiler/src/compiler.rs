@@ -17,7 +17,7 @@ use ebpf_analyzer::{
     spec::Instruction,
 };
 use ebpf_consts::*;
-use ebpf_macros::opcode_match;
+use opcode_macros::opcode_match;
 
 use crate::module::BpfModule;
 
@@ -90,7 +90,7 @@ impl Compiler {
                     pc += 1;
                     let opcode = insn.opcode;
                     opcode_match! {
-                        opcode,
+                        opcode in ebpf_consts,
                         // ALU / ALU64: BInary operators
                         [[BPF_ALU: ALU32, BPF_ALU64: ALU64], [BPF_X: X, BPF_K: K],
                          [
@@ -421,7 +421,7 @@ impl Compiler {
         };
 
         opcode_match! {
-            atomic_code as i32,
+            atomic_code as i32 in ebpf_consts,
             [[BPF_ATOMIC_FETCH: FETCH, BPF_ATOMIC_NO_FETCH: NO_FETCH],
              [
                 BPF_ATOMIC_ADD: Add,

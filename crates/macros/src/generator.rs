@@ -6,7 +6,7 @@ use quote::{quote, ToTokens, TokenStreamExt};
 
 use crate::{
     block::{CodeBlock, Replacing},
-    parser::{Alias, Aliases, OpcodeMatches},
+    parser::{Alias, Aliases, Full, Namespace, OpcodeMatches},
 };
 
 /// Generates a match statement from a parsed `OpcodeMatches`
@@ -25,6 +25,7 @@ pub fn generate(matches: &OpcodeMatches) -> TokenStream {
                 &mut consts,
                 &arm.header,
                 &matches.value_type,
+                &matches.namespace,
             );
         }
     }
@@ -34,11 +35,14 @@ pub fn generate(matches: &OpcodeMatches) -> TokenStream {
         }
     });
 
-    consts.into()
+    quote!({ #consts }).into()
 }
 
 struct ConstName(String);
-struct Component(&'static str);
+struct Component {
+    pub name: Full,
+    pub namespace: TokenStream2,
+}
 
 impl ToTokens for ConstName {
     fn to_tokens(&self, tokens: &mut TokenStream2) {
@@ -48,7 +52,8 @@ impl ToTokens for ConstName {
 
 impl ToTokens for Component {
     fn to_tokens(&self, tokens: &mut TokenStream2) {
-        tokens.append(Ident::new(self.0, Span::call_site()))
+        self.namespace.to_tokens(tokens);
+        tokens.append(Ident::new(&self.name, Span::call_site()))
     }
 }
 
@@ -59,6 +64,7 @@ fn add_all_combinations(
     consts: &mut TokenStream2,
     header: &Option<TokenStream2>,
     value_type: &Ident,
+    namespace: &Namespace,
 ) {
     let mut current: Vec<usize> = Vec::new();
     current.resize(combinations.len(), 0);
@@ -72,7 +78,10 @@ fn add_all_combinations(
         for (i, ele) in current.iter().enumerate() {
             let alias = &combinations[i].0[*ele];
             aliases.push(alias.0.clone());
-            components.push(Component(alias.1));
+            components.push(Component {
+                name: alias.1.clone(),
+                namespace: namespace.namespace.clone(),
+            });
             enabled.push(alias.0.clone());
             enabled.push(alias.1.to_string());
         }
@@ -99,7 +108,7 @@ fn add_all_combinations(
 }
 
 fn get_const_name(components: &[Component]) -> ConstName {
-    let v: Vec<&str> = components.iter().map(|c| c.0).collect();
+    let v: Vec<&str> = components.iter().map(|c| c.name.as_str()).collect();
     ConstName(v.join("_"))
 }
 

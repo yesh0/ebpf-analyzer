@@ -1,4 +1,4 @@
-use proc_macro2::TokenStream;
+use proc_macro2::{TokenStream, TokenTree};
 use quote::ToTokens;
 use syn::{
     braced, bracketed,
@@ -7,10 +7,7 @@ use syn::{
     token, Ident, LitStr, Token,
 };
 
-use crate::{
-    block::{CodeBlock, Replacing},
-    opcode::OPCODES,
-};
+use crate::block::{CodeBlock, Replacing};
 
 /// The root node
 pub struct OpcodeMatches {
@@ -19,6 +16,7 @@ pub struct OpcodeMatches {
     /// The variable name to match against
     pub value: Ident,
     pub value_type: Ident,
+    pub namespace: Namespace,
 }
 
 /// A match arm in the macro
@@ -31,10 +29,17 @@ pub struct MatchArm {
     pub header: Option<TokenStream>,
 }
 
+/// Opcode component namespace
+#[derive(Default)]
+pub struct Namespace {
+    pub namespace: TokenStream,
+}
+
 pub type Alias = String;
+pub type Full = String;
 
 /// The aliasing part of the macro, like `BPF_ALU64: ALU64`
-pub struct Aliases(pub Vec<(Alias, &'static str)>);
+pub struct Aliases(pub Vec<(Alias, Full)>);
 
 impl Aliases {
     pub fn contains(&self, alias: &str) -> bool {
@@ -48,7 +53,8 @@ fn until_bracket(input: &ParseStream) -> syn::Result<Vec<Replacing>> {
     while !input.is_empty() && !input.peek(token::Bracket) && !input.peek(Token!(#)) {
         blocks.push(Replacing::None(
             input
-                .step(|c| Ok(c.token_tree().unwrap()))?.to_token_stream(),
+                .step(|c| Ok(c.token_tree().unwrap()))?
+                .to_token_stream(),
         ));
     }
     Ok(blocks)
@@ -57,12 +63,18 @@ fn until_bracket(input: &ParseStream) -> syn::Result<Vec<Replacing>> {
 impl Parse for OpcodeMatches {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let value: Ident = input.parse()?;
-        let value_type = if !input.peek(Token!(,)) {
+        let value_type = if input.peek(Token!(as)) {
             let _: Token!(as) = input.parse()?;
             let t: Ident = input.parse()?;
             t
         } else {
             Ident::new("u8", value.span())
+        };
+        let namespace = if input.peek(Token!(in)) {
+            let _: Token!(in) = input.parse()?;
+            input.parse()?
+        } else {
+            Namespace::default()
         };
         let _: Token!(,) = input.parse()?;
         let mut arms: Vec<MatchArm> = Vec::new();
@@ -76,10 +88,12 @@ impl Parse for OpcodeMatches {
                 arm
             } else if input.peek(Token!(#)) {
                 let hash: Token!(#) = input.parse()?;
-                let tree = input.step(|c| if let Some(i) = c.token_tree() {
-                    Ok(i)
-                } else {
-                    Err(c.error("Unexpected end"))
+                let tree = input.step(|c| {
+                    if let Some(i) = c.token_tree() {
+                        Ok(i)
+                    } else {
+                        Err(c.error("Unexpected end"))
+                    }
                 })?;
                 let mut s = hash.to_token_stream();
                 s.extend(tree.to_token_stream());
@@ -101,8 +115,32 @@ impl Parse for OpcodeMatches {
         Ok(OpcodeMatches {
             value,
             value_type,
+            namespace,
             matches: arms,
         })
+    }
+}
+
+impl Parse for Namespace {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let namespace = input.step(|cursor| {
+            let mut stream = TokenStream::new();
+            let mut rest = *cursor;
+            while let Some((tt, next)) = rest.token_tree() {
+                match &tt {
+                    TokenTree::Punct(punct) if punct.as_char() == ',' => {
+                        stream.extend(quote::quote!(::));
+                        return Ok((stream, rest));
+                    }
+                    _ => {
+                        stream.extend(tt.to_token_stream());
+                        rest = next;
+                    }
+                }
+            }
+            Err(cursor.error("No comma found"))
+        })?;
+        Ok(Self { namespace })
     }
 }
 
@@ -136,7 +174,10 @@ impl Parse for MatchArm {
     }
 }
 
-struct AliasPair(&'static str, Alias);
+struct AliasPair {
+    pub full: String,
+    pub alias: Alias,
+}
 
 impl Parse for AliasPair {
     fn parse(input: ParseStream) -> syn::Result<Self> {
@@ -150,20 +191,18 @@ impl Parse for AliasPair {
             s.value()
         };
         match AliasPair::find_opcode_component(&component) {
-            Some(name) => Ok(AliasPair(name, alias)),
-            None => Err(syn::Error::new_spanned(component, "No such opcode component found")),
+            Some(full) => Ok(AliasPair { full, alias }),
+            None => Err(syn::Error::new_spanned(
+                component,
+                "No such opcode component found",
+            )),
         }
     }
 }
 
 impl AliasPair {
-    fn find_opcode_component(component: &Ident) -> Option<&'static str> {
-        for ele in OPCODES {
-            if *component == ele.0 {
-                return Some(ele.0);
-            }
-        }
-        None
+    fn find_opcode_component(component: &Ident) -> Option<String> {
+        Some(component.to_string())
     }
 }
 
@@ -175,7 +214,7 @@ impl Parse for Aliases {
             content.parse_terminated(AliasPair::parse)?;
         let mut result = Aliases(Vec::new());
         for ele in aliases {
-            result.0.push((ele.1, ele.0));
+            result.0.push((ele.alias, ele.full.clone()));
         }
         Ok(result)
     }
@@ -213,5 +252,14 @@ fn test_parsers() {
         0 => {}
         [[A: a]] => {}
     };
-    assert!(syn::parse2::<OpcodeMatches>(s).is_err());
+    assert!(syn::parse2::<OpcodeMatches>(s).is_ok());
+}
+
+#[test]
+fn test_in() {
+    let s = quote::quote! {
+        a as u8 in module,
+        _ => {}
+    };
+    assert!(syn::parse2::<OpcodeMatches>(s).is_ok());
 }

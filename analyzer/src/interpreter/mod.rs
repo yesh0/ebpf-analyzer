@@ -15,7 +15,7 @@ pub mod vm;
 use core::cell::RefMut;
 
 use ebpf_consts::*;
-use ebpf_macros::opcode_match;
+use opcode_macros::opcode_match;
 
 use crate::{interpreter::context::Fork, spec::Instruction};
 
@@ -53,7 +53,7 @@ pub fn run<Value: VmValue, M: Vm<Value>, C: VmContext<Value, M>>(
         *vm.pc() += 1;
         let opcode = insn.opcode;
         opcode_match! {
-            opcode,
+            opcode in ebpf_consts,
             // ALU / ALU64: Binary operators
             [[BPF_ALU: ALU32, BPF_ALU64: ALU64], [BPF_X: X, BPF_K: K],
              [
@@ -354,7 +354,7 @@ fn run_call<Value: VmValue, M: Vm<Value>>(insn: Instruction, vm: &mut RefMut<M>)
 fn run_atomic<Value: VmValue, M: Vm<Value>>(insn: Instruction, vm: &mut RefMut<M>, size: usize) {
     let atomic_code = insn.imm;
     opcode_match! {
-        atomic_code as i32,
+        atomic_code as i32 in ebpf_consts,
         [[BPF_ATOMIC_FETCH: FETCH, BPF_ATOMIC_NO_FETCH: NO_FETCH],
          [
             BPF_ATOMIC_ADD: "fetch_add",

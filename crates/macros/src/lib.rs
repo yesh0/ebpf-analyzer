@@ -2,7 +2,6 @@
 
 #![forbid(missing_docs)]
 
-mod opcode;
 mod parser;
 mod generator;
 mod block;
@@ -15,15 +14,15 @@ use crate::generator::generate;
 
 /// Generates a complex match statement
 ///
-/// ## Format
+/// # Format
 ///
 /// ```
-/// use ebpf_macros::opcode_match;
+/// use opcode_macros::opcode_match;
 /// use ebpf_consts::*;
 ///
 /// let opcode = 0u8;
 /// opcode_match! {
-///     opcode,
+///     opcode in ebpf_consts,
 ///     // Processed arms: begins with brackets
 ///     [[BPF_X: x, BPF_K: k], [BPF_ALU: "alu", BPF_ALU64: "alu64"]] => {
 ///     #?((x)) println!("In V1 branch");             ##
