@@ -1,4 +1,4 @@
-//! Provides the [opcode_match] macro.
+//! Provides the [opcode_match!] macro.
 
 #![forbid(missing_docs)]
 
