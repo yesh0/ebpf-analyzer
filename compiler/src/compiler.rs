@@ -125,13 +125,13 @@ impl Compiler {
                                 #?((MOV))
                                     let result = builder.ins().iconst(t, insn.imm as i64);
                                 ##
-                                #?((__MOV__))
+                                #?((!MOV))
                                     let dst = builder.use_var(dst_reg);
                                     #?((ALU32))
                                         let dst = builder.ins().ireduce(t, dst);
                                     ##
 
-                                    #?((__isub__))
+                                    #?((!isub))
                                         let result = builder.ins().#"{}_imm"2(dst, insn.imm as i64);
                                     ##
                                     #?((isub))
@@ -157,7 +157,7 @@ impl Compiler {
                                 #?((MOV))
                                     let result = rhs;
                                 ##
-                                #?((__MOV__))
+                                #?((!MOV))
                                     let dst = builder.use_var(dst_reg);
                                     #?((ALU32))
                                         let dst = builder.ins().ireduce(I32, dst);
@@ -261,7 +261,7 @@ impl Compiler {
                             ##
 
                             #?((K))
-                                #?((__JSET__))
+                                #?((!JSET))
                                     let cmp = IntCC::#=2;
                                     let c = builder.ins().icmp_imm(cmp, dst, insn.imm as i64);
                                 ##
@@ -274,7 +274,7 @@ impl Compiler {
                                 #?((JMP32))
                                     let rhs = builder.ins().ireduce(I32, rhs);
                                 ##
-                                #?((__JSET__))
+                                #?((!JSET))
                                     let cmp = IntCC::#=2;
                                     let c = builder.ins().icmp(cmp, dst, rhs);
                                 ##
@@ -312,7 +312,7 @@ impl Compiler {
                             let src_reg = registers[insn.src_reg() as usize];
                             let pointer = builder.use_var(src_reg);
                             let value = builder.ins().load(t, mem_flags, pointer, insn.off as i32);
-                            #?((__I64__))
+                            #?((!I64))
                                 let value = builder.ins().uextend(I64, value);
                             ##
                             builder.def_var(registers[insn.dst_reg() as usize], value);
@@ -327,7 +327,7 @@ impl Compiler {
                         ] => {
                             #?((STX))
                                 let value = builder.use_var(registers[insn.src_reg() as usize]);
-                                #?((__I64__))
+                                #?((!I64))
                                     let t = #=2;
                                     let value = builder.ins().ireduce(t, value);
                                 ##
@@ -441,7 +441,7 @@ impl Compiler {
                     };
                     builder.def_var(src_reg, result);
                 ##
-                #?((__FETCH__))
+                #?((!FETCH))
                     builder.ins().atomic_rmw(t, mem_flags, op, dst, src);
                 ##
             }

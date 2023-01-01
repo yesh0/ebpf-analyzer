@@ -7,11 +7,11 @@ use syn::{
     token, LitInt, LitStr, Token,
 };
 
-use crate::parser::{Alias, Aliases};
+use crate::parser::Aliases;
 
 /// Controls whether a code block is inserted
 pub struct Conditions {
-    pub when: Vec<Vec<Alias>>,
+    pub when: Vec<Vec<Predicate>>,
     pub position: Span,
 }
 
@@ -29,26 +29,37 @@ impl Conditions {
     }
 }
 
-fn condition_matches(condition: &[String], enabled: &[String]) -> bool {
+fn condition_matches(condition: &[Predicate], enabled: &[String]) -> bool {
     condition.iter().all(|cond| {
-        if cond.starts_with("__") && cond.ends_with("__") {
-            !enabled.contains(&cond[2..cond.len() - 2].to_string())
+        if cond.negated {
+            !enabled.contains(&cond.name)
         } else {
-            enabled.contains(cond)
+            enabled.contains(&cond.name)
         }
     })
 }
 
-struct IdentOrLitStr(String);
+#[derive(Clone)]
+pub struct Predicate {
+    pub name: String,
+    pub negated: bool,
+}
 
-impl Parse for IdentOrLitStr {
+impl Parse for Predicate {
     fn parse(input: ParseStream) -> syn::Result<Self> {
-        Ok(if input.peek(syn::Ident) {
-            let ident: Ident = input.parse()?;
-            IdentOrLitStr(ident.to_string())
-        } else {
-            let str: LitStr = input.parse()?;
-            IdentOrLitStr(str.value())
+        let negated = input.peek(Token!(!));
+        if negated {
+            let _: Token!(!) = input.parse()?;
+        }
+        Ok(Predicate {
+            negated,
+            name: if input.peek(syn::Ident) {
+                let ident: Ident = input.parse()?;
+                ident.to_string()
+            } else {
+                let str: LitStr = input.parse()?;
+                str.value()
+            },
         })
     }
 }
@@ -58,19 +69,19 @@ impl Parse for Conditions {
         let conditions;
         parenthesized!(conditions in input);
         let position = conditions.span();
-        let conds: Punctuated<Punctuated<IdentOrLitStr, Token!(,)>, Token!(|)> = conditions
+        let conds: Punctuated<Punctuated<Predicate, Token!(,)>, Token!(|)> = conditions
             .parse_terminated(|input| {
                 let content;
                 parenthesized!(content in input);
-                let aliases: Punctuated<IdentOrLitStr, Token!(,)> =
-                    content.parse_terminated(IdentOrLitStr::parse)?;
+                let aliases: Punctuated<Predicate, Token!(,)> =
+                    content.parse_terminated(Predicate::parse)?;
                 Ok(aliases)
             })?;
         Ok(Conditions {
             when: Vec::from_iter(
                 conds
                     .iter()
-                    .map(|aliases| Vec::from_iter(aliases.iter().map(|i| i.0.clone()))),
+                    .map(|aliases| aliases.iter().cloned().collect()),
             ),
             position,
         })
@@ -86,11 +97,25 @@ pub enum Replacing {
     /// A conditional block
     Nested(Conditions, CodeBlock),
     /// A `#0`, `#1` token, to be replaced with a string
-    WithString(usize),
-    /// A `#=0`, `#=1` token, to be replaced with a ident or puncts
-    WithRaw(usize),
-    /// A `#"...{}..."0` token, to be formatted with an ident
-    WithFormatted(usize, String),
+    WithString {
+        /// The alias group index
+        ///
+        /// - `0` selects `[1, 2, 3]` from `[[BPF_K: [1, 2, 3]]]`.
+        group: usize,
+        /// The alias element index
+        ///
+        /// - `1` in Group 0 selects `2` from `[[BPF_K: [1, 2, 3]]]`.
+        element: isize,
+    },
+    /// A `#=0`, `#=1` token, to be replaced with a ident or puncts. See [Replacing::WithString].
+    WithRaw { group: usize, element: isize },
+    /// A `#"...{}..."0` token, to be formatted with an ident. See [Replacing::WithString].
+    WithFormatted {
+        group: usize,
+        element: isize,
+        /// The format string
+        format: String,
+    },
     /// A groupsed block, e.g., `( #=2 )`
     Grouped(Delimiter, CodeBlock),
 }
@@ -123,24 +148,41 @@ impl Parse for Replacing {
                 let _: Token!(?) = input.parse()?;
                 let conditions: Conditions = input.parse()?;
                 Replacing::Nested(conditions, input.parse()?)
-            } else if input.peek(Token!(=)) || input.peek(LitInt) || input.peek(LitStr) {
+            } else if input.peek(Token!(=))
+                || input.peek(Token!(:))
+                || input.peek(LitInt)
+                || input.peek(LitStr)
+            {
                 // Reference
+                let element = if input.peek(Token!(:)) {
+                    let _: Token!(:) = input.parse()?;
+                    let i: LitInt = input.parse()?;
+                    let number = i.base10_parse::<isize>()?;
+                    let _: Token!(:) = input.parse()?;
+                    number
+                } else {
+                    0
+                };
                 let raw = input.peek(Token!(=));
+                if raw {
+                    let _: Token!(=) = input.parse()?;
+                }
                 let formatted = if input.peek(LitStr) {
                     input.parse::<LitStr>().ok()
                 } else {
                     None
                 };
+                let group = input.parse::<LitInt>()?.base10_parse::<usize>()?;
                 if raw {
-                    let _: Token!(=) = input.parse()?;
-                }
-                let number = input.parse::<LitInt>()?.base10_parse::<usize>()?;
-                if raw {
-                    Replacing::WithRaw(number)
+                    Replacing::WithRaw { group, element }
                 } else if let Some(format_str) = formatted {
-                    Replacing::WithFormatted(number, format_str.value())
+                    Replacing::WithFormatted {
+                        group,
+                        element,
+                        format: format_str.value(),
+                    }
                 } else {
-                    Replacing::WithString(number)
+                    Replacing::WithString { group, element }
                 }
             } else if input.peek(Token!(#)) {
                 // End
@@ -188,15 +230,14 @@ impl CodeBlock {
                     .iter()
                     .flat_map(|condition| condition.iter())
                     .find(|alias| {
-                        combinations.iter().all(|combination| {
-                            !combination.contains(alias)
-                                && !combination.contains(alias.trim_matches('_'))
-                        })
+                        combinations
+                            .iter()
+                            .all(|combination| !combination.contains(&alias.name))
                     })
                 {
                     return Err(syn::Error::new(
                         conditions.position,
-                        "Undeclared condition: ".to_string() + alias,
+                        "Undeclared condition: ".to_string() + &alias.name,
                     ));
                 }
             }

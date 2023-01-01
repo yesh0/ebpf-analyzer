@@ -39,11 +39,13 @@ pub type Alias = String;
 pub type Full = String;
 
 /// The aliasing part of the macro, like `BPF_ALU64: ALU64`
-pub struct Aliases(pub Vec<(Alias, Full)>);
+pub struct Aliases(pub Vec<(Vec<Alias>, Full)>);
 
 impl Aliases {
     pub fn contains(&self, alias: &str) -> bool {
-        self.0.iter().any(|(s, t)| s == alias || *t == alias)
+        self.0
+            .iter()
+            .any(|(s, t)| s.iter().any(|i| i == alias) || *t == alias)
     }
 }
 
@@ -187,7 +189,7 @@ impl Parse for MatchArm {
 
 struct AliasPair {
     pub full: String,
-    pub alias: Alias,
+    pub alias: Vec<Alias>,
 }
 
 impl Parse for AliasPair {
@@ -196,24 +198,34 @@ impl Parse for AliasPair {
         let _: Token!(:) = input.parse()?;
         let alias = if input.peek(Ident) {
             let ident: Ident = input.parse()?;
-            ident.to_string()
-        } else {
+            vec![ident.to_string()]
+        } else if input.peek(Token!(_)) {
+            let _: Token!(_) = input.parse()?;
+            vec![String::from("_")]
+        } else if input.peek(LitStr) {
             let s: LitStr = input.parse()?;
-            s.value()
+            vec![s.value()]
+        } else {
+            let content;
+            bracketed!(content in input);
+            let aliases: Punctuated<String, Token!(,)> =
+                content.parse_terminated(parse_string)?;
+            aliases.iter().cloned().collect()
         };
-        match AliasPair::find_opcode_component(&component) {
-            Some(full) => Ok(AliasPair { full, alias }),
-            None => Err(syn::Error::new_spanned(
-                component,
-                "No such opcode component found",
-            )),
-        }
+        Ok(AliasPair {
+            full: component.to_string(),
+            alias,
+        })
     }
 }
 
-impl AliasPair {
-    fn find_opcode_component(component: &Ident) -> Option<String> {
-        Some(component.to_string())
+fn parse_string(input: ParseStream) -> syn::Result<String> {
+    if input.peek(LitStr) {
+        let string: LitStr = input.parse()?;
+        Ok(string.value())
+    } else {
+        let tree: TokenTree = input.parse()?;
+        Ok(tree.to_string())
     }
 }
 

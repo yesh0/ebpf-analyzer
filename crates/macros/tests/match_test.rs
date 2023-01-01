@@ -1,5 +1,5 @@
-use opcode_macros::opcode_match;
 use ebpf_consts::*;
+use opcode_macros::opcode_match;
 
 #[test]
 pub fn match_test() {
@@ -66,4 +66,40 @@ fn test_replacing_in_parenthesis() {
         }
     };
     assert_eq!(value, 29);
+}
+
+#[test]
+fn test_multiple_aliases() {
+    let opcode = 0u8;
+    assert_eq!(
+        opcode_match! {
+            opcode as u8 in ebpf_consts,
+            [[BPF_ADD: [1, 2, 3, 4, 5]]] => {
+                #:0:=0 * (#:1:=0 + #:2:=0 + #:3:=0) * #:4:=0
+            }
+            _ => 0,
+        },
+        45
+    );
+}
+
+#[test]
+fn test_with_same_aliases() {
+    mod consts {
+        pub const A: u8 = 0;
+        pub const B: u8 = 1;
+    }
+    for i in 0u8..2 {
+        opcode_match! {
+            i as u8 in consts,
+            [[A: ["do_a", "do_final"], B: ["do_b", "do_final"]]] => {
+                #?((!do_final)) panic!(); ##
+                #?((do_final))
+                    assert_eq!(#:1:0, "do_final");
+                    assert!(#0.starts_with("do_"));
+                ##
+            }
+            _ => panic!(),
+        }
+    }
 }

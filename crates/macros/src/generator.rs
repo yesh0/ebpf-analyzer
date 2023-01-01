@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use proc_macro::TokenStream;
-use proc_macro2::{Ident, Literal, Span, TokenStream as TokenStream2, Group};
+use proc_macro2::{Group, Ident, Literal, Span, TokenStream as TokenStream2};
 use quote::{quote, ToTokens, TokenStreamExt};
 
 use crate::{
@@ -38,7 +38,7 @@ pub fn generate(matches: &OpcodeMatches) -> TokenStream {
     quote!({ #consts }).into()
 }
 
-struct ConstName(String);
+struct ConstName(String, Option<TokenStream2>);
 struct Component {
     pub name: Full,
     pub namespace: TokenStream2,
@@ -46,6 +46,9 @@ struct Component {
 
 impl ToTokens for ConstName {
     fn to_tokens(&self, tokens: &mut TokenStream2) {
+        if let Some(prefix) = &self.1 {
+            prefix.to_tokens(tokens);
+        }
         tokens.append(Ident::new(self.0.as_str(), Span::call_site()))
     }
 }
@@ -68,7 +71,7 @@ fn add_all_combinations(
 ) {
     let mut current: Vec<usize> = Vec::new();
     current.resize(combinations.len(), 0);
-    let mut aliases: Vec<Alias> = Vec::new();
+    let mut aliases: Vec<&[Alias]> = Vec::new();
     let mut enabled: Vec<String> = Vec::new();
     let mut components: Vec<Component> = Vec::new();
     loop {
@@ -77,20 +80,27 @@ fn add_all_combinations(
         components.clear();
         for (i, ele) in current.iter().enumerate() {
             let alias = &combinations[i].0[*ele];
-            aliases.push(alias.0.clone());
+            aliases.push(&alias.0);
             components.push(Component {
                 name: alias.1.clone(),
                 namespace: namespace.namespace.clone(),
             });
-            enabled.push(alias.0.clone());
+            enabled.extend(alias.0.iter().cloned());
             enabled.push(alias.1.to_string());
         }
+        enabled.sort_unstable();
+        enabled.dedup();
         let mut match_code = TokenStream2::default();
         construct_code(&aliases, &enabled, code, &mut match_code);
-        let const_name = get_const_name(&components);
-        consts.extend(quote! {
-            const #const_name : #value_type = #(#components)|*;
-        });
+        let const_name = if components.len() > 1 {
+            let const_name = get_const_name(&components);
+            consts.extend(quote! {
+                const #const_name : #value_type = #(#components)|*;
+            });
+            const_name
+        } else {
+            ConstName(components[0].name.clone(), Some(namespace.namespace.clone()))
+        };
         if let Some(header) = header {
             branches.extend(quote! {
                 #header
@@ -109,11 +119,11 @@ fn add_all_combinations(
 
 fn get_const_name(components: &[Component]) -> ConstName {
     let v: Vec<&str> = components.iter().map(|c| c.name.as_str()).collect();
-    ConstName(v.join("_"))
+    ConstName(v.join("_"), None)
 }
 
 fn construct_code(
-    aliases: &[String],
+    aliases: &[&[String]],
     enabled: &[String],
     code: &CodeBlock,
     output: &mut TokenStream2,
@@ -124,29 +134,33 @@ fn construct_code(
             Replacing::None(stream) => {
                 output.extend(stream.clone());
             }
-            Replacing::WithString(i) => {
-                if aliases.len() <= *i {
-                    panic!("#{i} out of range!");
+            Replacing::WithString { group, element } => {
+                if aliases.len() <= *group {
+                    panic!("#{group} out of range!");
                 }
-                let symbol = &aliases[*i];
+                let symbol = &aliases[*group][*element as usize];
                 output.extend(Literal::string(symbol.as_str()).to_token_stream());
             }
-            Replacing::WithRaw(i) => {
-                if aliases.len() <= *i {
-                    panic!("#{i} out of range!");
+            Replacing::WithRaw { group, element } => {
+                if aliases.len() <= *group {
+                    panic!("#{group} out of range!");
                 }
-                let symbol = &aliases[*i];
+                let symbol = &aliases[*group][*element as usize];
                 match TokenStream2::from_str(symbol) {
                     Ok(tokens) => output.extend(tokens),
                     Err(err) => panic!("{err:?}"),
                 }
             }
-            Replacing::WithFormatted(i, format_str) => {
-                if aliases.len() <= *i {
-                    panic!("#{i} out of range!");
+            Replacing::WithFormatted {
+                group,
+                element,
+                format,
+            } => {
+                if aliases.len() <= *group {
+                    panic!("#{group} out of range!");
                 }
-                let symbol = &aliases[*i];
-                match TokenStream2::from_str(&format_str.replace("{}", symbol)) {
+                let symbol = &aliases[*group][*element as usize];
+                match TokenStream2::from_str(&format.replace("{}", symbol)) {
                     Ok(tokens) => output.extend(tokens),
                     Err(err) => panic!("{err:?}"),
                 }
@@ -196,7 +210,10 @@ fn test_str_oor() {
     construct_code(
         &[],
         &[],
-        &CodeBlock(vec![Replacing::WithString(1)]),
+        &CodeBlock(vec![Replacing::WithString {
+            group: 1,
+            element: 0,
+        }]),
         &mut TokenStream2::new(),
     );
 }
@@ -207,7 +224,10 @@ fn test_raw_oor() {
     construct_code(
         &[],
         &[],
-        &CodeBlock(vec![Replacing::WithRaw(1)]),
+        &CodeBlock(vec![Replacing::WithRaw {
+            group: 1,
+            element: 0,
+        }]),
         &mut TokenStream2::new(),
     );
 }
@@ -216,9 +236,12 @@ fn test_raw_oor() {
 #[should_panic = "LexError"]
 fn test_raw_malformed() {
     construct_code(
-        &["(((".to_owned()],
+        &[&["(((".to_owned()]],
         &[],
-        &CodeBlock(vec![Replacing::WithRaw(0)]),
+        &CodeBlock(vec![Replacing::WithRaw {
+            group: 0,
+            element: 0,
+        }]),
         &mut TokenStream2::new(),
     );
 }

@@ -226,7 +226,7 @@ pub fn run<Value: VmValue, M: Vm<Value>, C: VmContext<Value, M>>(
                     #?((BPF_JSGT)|(BPF_JSGE)|(BPF_JSLT)|(BPF_JSLE))
                         let src = &mut Value::constanti32(insn.imm);
                     ##
-                    #?((__BPF_JSGT__,__BPF_JSGE__,__BPF_JSLT__,__BPF_JSLE__))
+                    #?((!BPF_JSGT,!BPF_JSGE,!BPF_JSLT,!BPF_JSLE))
                         let src = &mut Value::constantu32(insn.imm as u32);
                     ##
                     let dst = vm.reg(dst_r);
