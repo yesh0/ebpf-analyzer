@@ -5,7 +5,9 @@
 mod parser;
 mod generator;
 mod block;
+mod opcode_gen;
 
+use opcode_gen::OpcodeGen;
 use parser::OpcodeMatches;
 use proc_macro::TokenStream;
 use syn::parse_macro_input;
@@ -181,4 +183,34 @@ use crate::generator::generate;
 pub fn opcode_match(input: TokenStream) -> TokenStream {
     let matches = parse_macro_input!(input as OpcodeMatches);
     generate(&matches)
+}
+
+/// Generates opcode from bit field enums
+///
+/// # Example
+///
+/// ```rust
+/// use opcode_macros::opcode_gen;
+/// opcode_gen! {
+///     for BPF_* in ebpf_consts as u8 {
+///         [
+///             [BPF_ALU, BPF_ALU64],
+///             [BPF_K, BPF_X],
+///             [BPF_ADD, BPF_SUB],
+///         ]
+///         [
+///             [BPF_JMP, BPF_JMP32],
+///             [BPF_K, BPF_X],
+///             [BPF_JLE, BPF_JLT],
+///         ]
+///     }
+/// }
+/// # use ebpf_consts::*;
+/// assert_eq!(BPF_ALU64_K_ADD, BPF_ALU64 | BPF_K | BPF_ADD);
+/// assert_eq!(BPF_JMP_X_JLT, BPF_JMP | BPF_X | BPF_JLT);
+/// ```
+#[proc_macro]
+pub fn opcode_gen(input: TokenStream) -> TokenStream {
+    let gen = parse_macro_input!(input as OpcodeGen);
+    gen.generate()
 }

@@ -145,6 +145,10 @@ impl Parse for Namespace {
                         stream.extend(quote::quote!(::));
                         return Ok((stream, rest));
                     }
+                    TokenTree::Ident(ident) if *ident == "as" => {
+                        stream.extend(quote::quote!(::));
+                        return Ok((stream, rest));
+                    }
                     _ => {
                         stream.extend(tt.to_token_stream());
                         rest = next;
