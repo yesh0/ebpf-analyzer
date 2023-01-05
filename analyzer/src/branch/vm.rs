@@ -241,8 +241,8 @@ impl Clone for BranchState {
         }
         let mut another = Self(UnsafeCell::new(InnerState {
             pc: inner.pc,
-            ids: IdGen::default(),
-            invalid: Vec::new(),
+            ids: inner.ids.clone(),
+            invalid: inner.invalid.clone(),
             registers: Default::default(),
             temp_reg: inner.temp_reg.clone(),
             call_trace: inner.call_trace.clone(),
