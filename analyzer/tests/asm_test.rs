@@ -198,3 +198,18 @@ fn test_pointers() {
         4,
     );
 }
+
+#[test]
+fn test_stack_multi_borrow() {
+    test_pointer_checks(
+        r#"stxdw [r10-8], r10
+stxdw [r10-16], r1
+mov r0, 0
+div r0, r0
+jeq r0, 0, exit
+add r0, 1
+exit"#,
+        true,
+        0xff,
+    );
+}

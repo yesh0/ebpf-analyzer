@@ -8,10 +8,15 @@ use core::{
     fmt::Debug,
 };
 
-use alloc::{rc::Rc, vec::Vec, string::{String, ToString}};
-use ebpf_consts::{READABLE_REGISTER_COUNT, WRITABLE_REGISTER_COUNT, BPF_IMM64_MAP_FD};
+use alloc::{
+    rc::Rc,
+    string::{String, ToString},
+    vec::Vec,
+};
+use ebpf_consts::{BPF_IMM64_MAP_FD, READABLE_REGISTER_COUNT, WRITABLE_REGISTER_COUNT};
 
 use crate::{
+    analyzer::MapInfo,
     interpreter::{
         value::Verifiable,
         vm::{CallerContext, Vm},
@@ -19,11 +24,14 @@ use crate::{
     safe::{mut_borrow_items, safe_ref_unsafe_cell},
     spec::{proto::VerifiableCall, Instruction},
     track::{
-        pointees::{empty_region::EmptyRegion, pointed, stack_region::StackRegion, Pointee, map_resource::SimpleMap},
+        pointees::{
+            empty_region::EmptyRegion, map_resource::SimpleMap, pointed, stack_region::StackRegion,
+            Pointee,
+        },
         pointer::Pointer,
         scalar::Scalar,
         TrackedValue,
-    }, analyzer::MapInfo,
+    },
 };
 
 use super::{
@@ -105,7 +113,10 @@ impl BranchState {
         let map_fds = state.maps.clone();
         let mut state_maps = map_fds.borrow_mut();
         for (fd, info) in maps {
-            let map = pointed(SimpleMap::new(info.key_size as usize, info.value_size as usize));
+            let map = pointed(SimpleMap::new(
+                info.key_size as usize,
+                info.value_size as usize,
+            ));
             state_maps.push((fd, map));
         }
 
@@ -116,26 +127,19 @@ impl BranchState {
         vm
     }
 
-    fn get_region(&self, id: Id) -> Pointee {
-        if id == self.inner().stack.borrow_mut().get_id() {
-            self.inner().stack.clone()
-        } else {
-            let index = self
-                .inner()
-                .regions
-                .binary_search_by(|r| r.borrow_mut().get_id().cmp(&id));
-            self.inner().regions[index.unwrap()].clone()
-        }
+    fn get_stack(&self) -> Pointee {
+        self.inner().stack.clone()
     }
 
-    fn get_region_except(&self, id: Id, borrowed: Id) -> Pointee {
-        if id == self.inner().stack.borrow_mut().get_id() {
-            self.inner().stack.clone()
+    fn get_region(&self, id: Id, stack_id: Id, borrowed: Option<Id>) -> Pointee {
+        if id == stack_id {
+            self.get_stack()
         } else {
+            let borrowed_id = borrowed.unwrap_or(0);
             let index = self.inner().regions.binary_search_by(|r| {
                 r.try_borrow()
                     .map(|r| r.get_id())
-                    .unwrap_or(borrowed)
+                    .unwrap_or(borrowed_id)
                     .cmp(&id)
             });
             self.inner().regions[index.unwrap()].clone()
@@ -248,27 +252,22 @@ impl Clone for BranchState {
             helpers: inner.helpers,
             maps: inner.maps.clone(),
         }));
+        let stack_id = inner.stack.borrow_mut().get_id();
         another
             .inner()
             .stack
             .borrow_mut()
-            .redirects(&|i| Some(another.get_region(i)));
+            .redirects(&|i| Some(another.get_region(i, stack_id, None)));
         for region in &another.inner().regions {
             let mut borrow = region.borrow_mut();
             let id = borrow.get_id();
-            let redirector = |i| {
-                Some(if i == id {
-                    region.clone()
-                } else {
-                    another.get_region_except(i, id)
-                })
-            };
+            let redirector = |i| Some(another.get_region(i, stack_id, Some(id)));
             borrow.redirects(&redirector);
         }
         for (i, register) in inner.registers.iter().enumerate() {
             let mut v = register.clone();
             if let Some(TrackedValue::Pointer(ref mut p)) = v.inner_mut() {
-                p.redirect(another.get_region(p.get_pointing_to()));
+                p.redirect(another.get_region(p.get_pointing_to(), stack_id, None));
             }
             another.inner_mut().registers[i] = v;
         }
