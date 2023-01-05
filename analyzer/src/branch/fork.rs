@@ -193,6 +193,7 @@ impl Forker<CheckedValue, BranchState> for BranchState {
                         if dst_i >= 0 {
                             *branch.reg(dst_i as u8) = scalar::Scalar::constant64(0).into();
                         }
+                        self.update_pointers(p1);
                         Some(Rc::new(RefCell::new(branch)))
                     }
                 } else {

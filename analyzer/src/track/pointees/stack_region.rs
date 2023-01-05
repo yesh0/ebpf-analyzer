@@ -5,10 +5,10 @@ use ebpf_consts::STACK_SIZE;
 
 use crate::{
     branch::id::Id,
-    track::{scalar::Scalar, TrackError, TrackedValue},
+    track::{pointer::Pointer, scalar::Scalar, TrackError, TrackedValue},
 };
 
-use super::{is_access_in_range, MemoryRegion, SafeClone, Pointee, pointed};
+use super::{is_access_in_range, pointed, InnerRegion, MemoryRegion, Pointee, SafeClone};
 
 const BIT_MAP_BYTES: usize = STACK_SIZE / 8;
 
@@ -140,6 +140,18 @@ impl StackRegion {
     fn o2i(offset: usize) -> usize {
         STACK_SIZE / 8 - 1 - offset / 8
     }
+
+    /// Updates pointers to the same region as non null if the pointer is non null
+    pub fn update_pointers(&mut self, pointer: &mut Pointer) {
+        let id = pointer.get_pointing_to();
+        for slot in &mut self.values {
+            if let StackSlot::Value64(TrackedValue::Pointer(p)) = slot {
+                if p.is_pointing_to(id) {
+                    p.set_non_null();
+                }
+            }
+        }
+    }
 }
 
 impl Default for StackRegion {
@@ -255,6 +267,10 @@ impl MemoryRegion for StackRegion {
             Err(TrackError::PointerOffsetMisaligned)
         }
     }
+
+    fn inner(&mut self) -> InnerRegion {
+        InnerRegion::Stack(self)
+    }
 }
 
 impl SafeClone for StackRegion {
@@ -282,10 +298,7 @@ impl SafeClone for StackRegion {
 }
 
 #[cfg(test)]
-use super::{
-    super::pointer::{Pointer, PointerAttributes},
-    empty_region::EmptyRegion,
-};
+use super::{super::pointer::PointerAttributes, empty_region::EmptyRegion};
 
 #[cfg(test)]
 use rand::{thread_rng, Rng};

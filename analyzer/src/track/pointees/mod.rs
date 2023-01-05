@@ -10,7 +10,7 @@ use crate::{
     spec::proto::IllegalFunctionCall,
 };
 
-use self::dyn_region::DynamicRegion;
+use self::{dyn_region::DynamicRegion, stack_region::StackRegion};
 
 use super::{scalar::Scalar, TrackError, TrackedValue};
 
@@ -31,6 +31,8 @@ pub type AnyType = i32;
 pub enum InnerRegion<'a> {
     /// A dynamic range
     Dyn(&'a mut DynamicRegion),
+    /// A stack
+    Stack(&'a mut StackRegion),
     /// Anything, allowing for user-defined types
     Any((AnyType, &'a mut dyn Any)),
     /// Not supposed to be used as anything

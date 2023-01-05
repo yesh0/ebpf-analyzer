@@ -213,3 +213,19 @@ exit"#,
         0xff,
     );
 }
+
+#[test]
+fn test_stack_non_null_propagation() {
+    test_pointer_checks(
+        r#"stxdw [r10-8], r1
+jeq r1, 0, else
+ldxdw r2, [r10-8]
+ldxdw r0, [r2]
+ja exit
+else:
+mov r0, 0
+exit"#,
+        true,
+        0xff,
+    );
+}

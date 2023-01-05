@@ -13,7 +13,7 @@ use alloc::{
     string::{String, ToString},
     vec::Vec,
 };
-use ebpf_consts::{BPF_IMM64_MAP_FD, READABLE_REGISTER_COUNT, WRITABLE_REGISTER_COUNT};
+use ebpf_consts::*;
 
 use crate::{
     analyzer::MapInfo,
@@ -26,7 +26,7 @@ use crate::{
     track::{
         pointees::{
             empty_region::EmptyRegion, map_resource::SimpleMap, pointed, stack_region::StackRegion,
-            Pointee,
+            InnerRegion, Pointee,
         },
         pointer::Pointer,
         scalar::Scalar,
@@ -46,7 +46,7 @@ use super::{
 pub type StaticHelpers = &'static [&'static dyn VerifiableCall<CheckedValue, BranchState>];
 
 /// Inner state of [BranchState]
-struct InnerState {
+pub(crate) struct InnerState {
     pc: usize,
     ids: IdGen,
     invalid: Vec<String>,
@@ -224,6 +224,12 @@ impl BranchState {
 
     fn inner_mut(&mut self) -> &mut InnerState {
         self.0.get_mut()
+    }
+
+    pub(super) fn update_pointers(&mut self, pointer: &mut Pointer) {
+        if let InnerRegion::Stack(stack) = self.get_stack().borrow_mut().inner() {
+            stack.update_pointers(pointer);
+        }
     }
 }
 
