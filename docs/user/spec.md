@@ -94,12 +94,14 @@ In short, `BPF_CALL` has multiple semantics, differentiated by the `src_deg` fie
     A new stack frame is allocated for each call.
   - During [`bpf_patch_call_args`](https://github.com/torvalds/linux/blob/4dc12f37a8e98e1dca5521c14625c869537b50b6/kernel/bpf/core.c#L2067-L2074),
     the instruction is replaced with an internal one (`JMP_CALL_ARGS`).
-    
+
 ::: tip
 If you are implementing your own eBPF runtime, you don't need to follow the internals of Linux.
 All the above explanations just aim to help with reading Linux source code and understanding eBPF semantics.
 :::
 
 ### Relocation
+
+See [libbpf](./libbpf.md#maps) for some info about map relocation.
 
 (WIP) <!-- TODO: Try to explain this mess -->
