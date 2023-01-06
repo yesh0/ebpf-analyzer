@@ -13,7 +13,7 @@ atomic64 = ["ebpf-atomic/atomic64"]
 nightly = ["ebpf-atomic/nightly"]
 
 [dependencies]
-opcode-macros = { path = "./../crates/macros" }
+opcode-macros = { path = "./../crates/macros", version = "0.1.0" }
 ebpf-atomic = { path = "./../crates/atomic", optional = true }
 ebpf-consts = { path = "./../crates/consts" }
 
