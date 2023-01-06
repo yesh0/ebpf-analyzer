@@ -265,8 +265,11 @@ impl Instruction {
     }
 
     /// Returns `Some(fd)` if it is a wide instruction with [BPF_IMM64_MAP_FD]
+    /// or [BPF_IMM64_MAP_VALUE]
     pub fn is_ldimm64_map_fd(self) -> Option<i32> {
-        if self.is_wide() && self.src_reg() == BPF_IMM64_MAP_FD {
+        if self.is_wide()
+            && (self.src_reg() == BPF_IMM64_MAP_FD || self.src_reg() == BPF_IMM64_MAP_VALUE)
+        {
             Some(self.imm)
         } else {
             None
@@ -590,20 +593,31 @@ fn test_atomic_validation() {
         0,
         BPF_ATOMIC_FETCH | BPF_ATOMIC_ADD,
     ));
-    assert!(matches!(i.is_atomic_store_valid(), Err(IllegalInstruction::UnsupportedAtomicWidth)));
+    assert!(matches!(
+        i.is_atomic_store_valid(),
+        Err(IllegalInstruction::UnsupportedAtomicWidth)
+    ));
     i.opcode = BPF_ATOMIC | BPF_DW | BPF_STX;
     assert!(i.is_atomic_store_valid().is_ok());
     i.regs = 0xb;
     assert_eq!(i.dst_reg(), 11);
-    assert!(matches!(i.is_atomic_store_valid(), Err(IllegalInstruction::IllegalRegister)));
+    assert!(matches!(
+        i.is_atomic_store_valid(),
+        Err(IllegalInstruction::IllegalRegister)
+    ));
     i.regs = 0xb0;
     assert_eq!(i.src_reg(), 11);
-    assert!(matches!(i.is_atomic_store_valid(), Err(IllegalInstruction::IllegalRegister)));
+    assert!(matches!(
+        i.is_atomic_store_valid(),
+        Err(IllegalInstruction::IllegalRegister)
+    ));
     assert!(Instruction::from_raw(Instruction::pack(
         BPF_ATOMIC | BPF_W | BPF_STX,
         0,
         0,
         0,
         BPF_ATOMIC_ADD,
-    )).validate().is_ok());
+    ))
+    .validate()
+    .is_ok());
 }

@@ -1,6 +1,7 @@
 //! A simplistic map resource
 
 use alloc::vec::Vec;
+use ebpf_consts::maps::MapType;
 
 use crate::{
     branch::{checked_value::CheckedValue, id::Id, vm::BranchState},
@@ -23,6 +24,8 @@ pub const MAP_VALUE_TYPE_ID: AnyType = -2i32;
 #[derive(Clone, Debug)]
 pub struct SimpleMap {
     id: u32,
+    map_type: MapType,
+    max_size: usize,
     key_size: usize,
     value_size: usize,
     values: Vec<Pointee>,
@@ -32,9 +35,11 @@ impl SimpleMap {
     /// Creates a map
     ///
     /// Sizes should be in bytes.
-    pub fn new(key_size: usize, value_size: usize) -> Self {
+    pub fn new(map_type: MapType, max_size: usize, key_size: usize, value_size: usize) -> Self {
         Self {
             id: 0,
+            map_type,
+            max_size,
             key_size,
             value_size,
             values: Vec::new(),
@@ -49,6 +54,16 @@ impl SimpleMap {
     /// Returns the value size in bytes
     pub fn value_size(&self) -> usize {
         self.value_size
+    }
+
+    /// Returns the type of the map
+    pub fn map_type(&self) -> MapType {
+        self.map_type.clone()
+    }
+
+    /// Returns the max size of the map
+    pub fn max_size(&self) -> usize {
+        self.max_size
     }
 
     /// Returns a region of a map value (nullable, readable, writable, allowing arithmetic)
@@ -186,7 +201,7 @@ fn get_map_info(vm: &mut BranchState) -> Result<(usize, usize), IllegalFunctionC
 fn test_map_helpers() {
     use alloc::vec::Vec;
     use crate::interpreter::vm::Vm;
-    let map = pointed(SimpleMap::new(8, 8));
+    let map = pointed(SimpleMap::new(MapType::Unspec, 1, 8, 8));
     let mut vm = BranchState::new(&[], Vec::new());
     vm.add_external_resource(map.clone());
 

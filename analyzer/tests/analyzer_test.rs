@@ -13,6 +13,7 @@ use ebpf_analyzer::{
         TrackedValue,
     },
 };
+use ebpf_consts::maps::MapType;
 use llvm_util::parse_llvm_dump;
 
 struct AssertFunc;
@@ -195,6 +196,8 @@ const MAP_HELPERS: &AnalyzerConfig = &AnalyzerConfig {
     map_fd_collector: &|fd| {
         if (fd >> 16) == 0 {
             Some(MapInfo {
+                map_type: MapType::Array,
+                max_size: 1,
                 key_size: (fd as u32 >> 8) & 0xff,
                 value_size: fd as u32 & 0xff,
             })

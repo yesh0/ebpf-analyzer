@@ -240,6 +240,20 @@ pub const BPF_ATOMIC_CMPXCHG_NO_FETCH  : i32 = 0xf0;
 /// BPF STX ATMOIC immediate code: atomic compare and swap
 pub const BPF_ATOMIC_CMPXCHG           : i32 = BPF_ATOMIC_CMPXCHG_NO_FETCH | BPF_ATOMIC_FETCH;
 
+/// Map constants
+pub mod maps {
+    /// Types of maps
+    #[derive(Clone, Debug)]
+    pub enum MapType {
+        /// Unspecified map type `BPF_MAP_TYPE_UNSPEC`
+        Unspec = 0,
+        /// Hash map type `BPF_MAP_TYPE_HASH`
+        Hash   = 1,
+        /// Array map type `BPF_MAP_TYPE_ARRAY`
+        Array  = 2,
+    }
+}
+
 /// A module containing bit masks
 pub mod mask {
     use crate::*;

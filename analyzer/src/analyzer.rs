@@ -3,6 +3,7 @@
 use core::cell::RefCell;
 
 use alloc::{rc::Rc, vec::Vec};
+use ebpf_consts::maps::MapType;
 
 use crate::{
     blocks::{FunctionBlocks, IllegalStructure, ProgramInfo, TERMINAL_PSEUDO_BLOCK},
@@ -16,6 +17,10 @@ use crate::{
 
 /// eBPF map info
 pub struct MapInfo {
+    /// Map type as is in [ebpf_consts::maps]
+    pub map_type: MapType,
+    /// Max size or fixed preallocated size
+    pub max_size: u32,
     /// Size (in bytes) of the map key
     pub key_size: u32,
     /// Size (in bytes) of the map value

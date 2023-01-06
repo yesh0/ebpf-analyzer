@@ -13,7 +13,7 @@ use alloc::{
     string::{String, ToString},
     vec::Vec,
 };
-use ebpf_consts::*;
+use ebpf_consts::{maps::MapType, *};
 
 use crate::{
     analyzer::MapInfo,
@@ -25,7 +25,10 @@ use crate::{
     spec::{proto::VerifiableCall, Instruction},
     track::{
         pointees::{
-            empty_region::EmptyRegion, map_resource::SimpleMap, pointed, stack_region::StackRegion,
+            empty_region::EmptyRegion,
+            map_resource::{SimpleMap, MAP_TYPE_ID},
+            pointed,
+            stack_region::StackRegion,
             InnerRegion, Pointee,
         },
         pointer::Pointer,
@@ -114,6 +117,8 @@ impl BranchState {
         let mut state_maps = map_fds.borrow_mut();
         for (fd, info) in maps {
             let map = pointed(SimpleMap::new(
+                info.map_type,
+                info.max_size as usize,
                 info.key_size as usize,
                 info.value_size as usize,
             ));
@@ -419,7 +424,7 @@ impl Vm<CheckedValue> for BranchState {
         }
     }
 
-    fn load_imm64(&mut self, insn: &Instruction, _next: u64) -> Option<CheckedValue> {
+    fn load_imm64(&mut self, insn: &Instruction, next: u64) -> Option<CheckedValue> {
         match insn.src_reg() {
             BPF_IMM64_MAP_FD => {
                 let fd = insn.imm;
@@ -427,6 +432,28 @@ impl Vm<CheckedValue> for BranchState {
                 for (i, map) in maps.iter() {
                     if fd == *i {
                         return Some(Pointer::nrw(map.clone()).into());
+                    }
+                }
+                None
+            }
+            BPF_IMM64_MAP_VALUE => {
+                let fd = insn.imm;
+                // TODO: Not efficient, simply working around multiple borrows
+                let maps = self.inner_mut().maps.borrow_mut().clone();
+                for (i, map) in maps.iter() {
+                    if fd == *i {
+                        if let InnerRegion::Any((MAP_TYPE_ID, mref)) = map.borrow_mut().inner() {
+                            let m: &mut SimpleMap = mref.downcast_mut().unwrap();
+                            // TODO: Maybe reuse those values for the same map
+                            if matches!(m.map_type(), MapType::Array) && m.max_size() > 0 {
+                                let mut ptr = m.get_value(self);
+                                ptr += &Scalar::constant64(next >> 32);
+
+                                // Array maps are preallocated and never empty
+                                ptr.set_non_null();
+                                return Some(ptr.into());
+                            }
+                        }
                     }
                 }
                 None
