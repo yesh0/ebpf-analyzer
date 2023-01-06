@@ -1,2 +1,3 @@
 tests/conformance
 tests/bpf_conformance
+tests/bpf-samples

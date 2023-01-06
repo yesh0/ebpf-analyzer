@@ -24,6 +24,8 @@ jobs:
         run: sudo apt install cmake libbpf-dev libboost-all-dev
       - name: Generate conformance tests
         run: make -C analyzer conformance-gen
+      - name: Fetch bpf-samples
+        run: make -C analyzer bpf-samples
       - name: Build
         run: cargo build --verbose
       - name: Clippy

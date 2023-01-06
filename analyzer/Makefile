@@ -9,6 +9,9 @@ bpf-gen: $(addsuffix .txt, $(basename $(wildcard $(BPF_DIR)/*.c)))
 conformance-gen:
 	../scripts/conformance.sh tests/bpf_conformance ./tests/conformance ./tests/bpf-src/asm
 
+bpf-samples:
+	git clone https://github.com/yesh0/ebpf-samples.git tests/bpf-samples
+
 clean:
 	rm $(BPF_DIR)/*.txt
 

@@ -2,6 +2,7 @@
 
 pub mod conformance;
 pub mod helper;
+pub mod object;
 
 fn from_bytes(s: &[&str], i: usize) -> u64 {
     let mut result = 0;

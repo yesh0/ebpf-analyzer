@@ -6,4 +6,5 @@ repository.workspace = true
 license.workspace = true
 
 [dependencies]
+aya-obj = { git = "https://github.com/aya-rs/aya" }
 mapr = "0.8.0"
